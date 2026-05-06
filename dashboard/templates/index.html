@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT Ticket Intelligence Agent</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+
+  header {
+    background: linear-gradient(135deg, #1a2332 0%, #0d1117 100%);
+    border-bottom: 1px solid #30363d;
+    padding: 16px 32px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.3rem; font-weight: 600; color: #58a6ff; }
+  header .badge { background: #1f6feb33; color: #58a6ff; border: 1px solid #1f6feb; border-radius: 20px; padding: 3px 12px; font-size: 0.75rem; }
+  .aws-badge { background: #ff990033; color: #ff9900; border: 1px solid #ff9900; border-radius: 20px; padding: 3px 12px; font-size: 0.75rem; }
+
+  .layout { display: grid; grid-template-columns: 1fr 380px; gap: 0; height: calc(100vh - 61px); }
+
+  /* LEFT PANEL */
+  .left { padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+
+  .input-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px;
+  }
+  .input-card h2 { font-size: 0.9rem; color: #8b949e; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  textarea {
+    width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    color: #e6edf3; padding: 12px; font-size: 0.95rem; resize: vertical; min-height: 80px;
+    font-family: inherit; outline: none;
+  }
+  textarea:focus { border-color: #58a6ff; }
+  .btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 0.9rem; font-weight: 500; transition: all 0.2s;
+  }
+  .btn-primary { background: #1f6feb; color: white; }
+  .btn-primary:hover { background: #388bfd; }
+  .btn-demo { background: #21262d; color: #8b949e; border: 1px solid #30363d; font-size: 0.8rem; padding: 6px 12px; }
+  .btn-demo:hover { background: #30363d; color: #e6edf3; }
+
+  /* FLOW DIAGRAM */
+  .flow-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px;
+  }
+  .flow-card h2 { font-size: 0.9rem; color: #8b949e; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .flow { display: flex; align-items: flex-start; gap: 0; position: relative; }
+  .flow-step {
+    display: flex; flex-direction: column; align-items: center; flex: 1;
+    position: relative;
+  }
+  .flow-step:not(:last-child)::after {
+    content: ''; position: absolute; top: 22px; left: 60%; width: 80%; height: 2px;
+    background: #30363d; z-index: 0; transition: background 0.5s;
+  }
+  .flow-step.done:not(:last-child)::after { background: #3fb950; }
+  .flow-step.active:not(:last-child)::after { background: #58a6ff; }
+
+  .step-icon {
+    width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 1.2rem; border: 2px solid #30363d;
+    background: #0d1117; z-index: 1; transition: all 0.4s; position: relative;
+  }
+  .flow-step.active .step-icon { border-color: #58a6ff; background: #1f6feb22; box-shadow: 0 0 16px #58a6ff66; animation: pulse 1.2s infinite; }
+  .flow-step.done .step-icon { border-color: #3fb950; background: #3fb95022; }
+  .flow-step.error .step-icon { border-color: #f85149; background: #f8514922; }
+  .flow-step.recurring .step-icon { border-color: #d29922; background: #d2992222; }
+  .flow-step.new .step-icon { border-color: #a371f7; background: #a371f722; }
+  .flow-step.resolved .step-icon { border-color: #3fb950; background: #3fb95033; }
+
+  .step-label { font-size: 0.75rem; color: #8b949e; margin-top: 8px; text-align: center; }
+  .flow-step.active .step-label { color: #58a6ff; }
+  .flow-step.done .step-label, .flow-step.resolved .step-label { color: #3fb950; }
+
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 8px #58a6ff44; } 50% { box-shadow: 0 0 20px #58a6ffaa; } }
+
+  /* SUB-AGENTS ROW */
+  .agents-row {
+    display: flex; gap: 10px; margin-top: 8px;
+  }
+  .agent-box {
+    flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 10px 8px; text-align: center; font-size: 0.75rem; color: #8b949e;
+    transition: all 0.4s;
+  }
+  .agent-box .agent-icon { font-size: 1.4rem; display: block; margin-bottom: 4px; }
+  .agent-box.active { border-color: #58a6ff; background: #1f6feb11; color: #58a6ff; box-shadow: 0 0 12px #58a6ff33; }
+  .agent-box.done { border-color: #3fb950; background: #3fb95011; color: #3fb950; }
+
+  /* RESULT CARD */
+  .result-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px;
+    display: none;
+  }
+  .result-card.show { display: block; }
+  .result-card h2 { font-size: 0.9rem; color: #8b949e; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .tag { display: inline-block; border-radius: 6px; padding: 3px 10px; font-size: 0.8rem; font-weight: 600; margin-right: 6px; }
+  .tag-cicd    { background: #1f6feb33; color: #58a6ff; border: 1px solid #1f6feb; }
+  .tag-data    { background: #a371f733; color: #a371f7; border: 1px solid #a371f7; }
+  .tag-infra   { background: #3fb95033; color: #3fb950; border: 1px solid #3fb950; }
+  .tag-access  { background: #d2992233; color: #d29922; border: 1px solid #d29922; }
+  .tag-network { background: #f8514933; color: #f85149; border: 1px solid #f85149; }
+  .tag-unknown { background: #30363d; color: #8b949e; border: 1px solid #30363d; }
+  .tag-p1 { background: #f8514933; color: #f85149; border: 1px solid #f85149; }
+  .tag-p2 { background: #d2992233; color: #d29922; border: 1px solid #d29922; }
+  .tag-p3 { background: #3fb95033; color: #3fb950; border: 1px solid #3fb950; }
+  .tag-p4 { background: #1f6feb33; color: #58a6ff; border: 1px solid #1f6feb; }
+
+  .conf-bar-wrap { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .conf-bar { height: 8px; border-radius: 4px; background: #30363d; flex: 1; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+  .conf-fill.high { background: #3fb950; }
+  .conf-fill.med  { background: #d29922; }
+  .conf-fill.low  { background: #f85149; }
+
+  .fix-box { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; margin-top: 12px; }
+  .fix-box h3 { font-size: 0.8rem; color: #8b949e; margin-bottom: 8px; }
+  .fix-box p { font-size: 0.85rem; line-height: 1.6; color: #e6edf3; }
+  .fix-steps { font-size: 0.85rem; line-height: 1.8; color: #e6edf3; white-space: pre-wrap; }
+
+  /* RIGHT PANEL — LOG */
+  .right {
+    background: #0d1117; border-left: 1px solid #30363d;
+    display: flex; flex-direction: column;
+  }
+  .right-header { padding: 16px 20px; border-bottom: 1px solid #30363d; }
+  .right-header h2 { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+  .log { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .log-entry {
+    background: #161b22; border-radius: 6px; padding: 8px 12px;
+    border-left: 3px solid #30363d; font-size: 0.8rem;
+  }
+  .log-entry.active { border-left-color: #58a6ff; }
+  .log-entry.done   { border-left-color: #3fb950; }
+  .log-entry.error  { border-left-color: #f85149; }
+  .log-entry.recurring { border-left-color: #d29922; }
+  .log-entry.new    { border-left-color: #a371f7; }
+  .log-entry.resolved { border-left-color: #3fb950; background: #3fb95011; }
+  .log-ts { color: #8b949e; font-size: 0.72rem; }
+  .log-msg { color: #e6edf3; margin-top: 2px; }
+  .log-detail { color: #8b949e; font-size: 0.75rem; margin-top: 2px; }
+
+  .history-section { border-top: 1px solid #30363d; padding: 12px 16px; max-height: 200px; overflow-y: auto; }
+  .history-section h3 { font-size: 0.8rem; color: #8b949e; margin-bottom: 8px; text-transform: uppercase; }
+  .history-item { font-size: 0.75rem; color: #8b949e; padding: 4px 0; border-bottom: 1px solid #21262d; display: flex; gap: 8px; align-items: center; }
+  .history-item .h-status { color: #3fb950; }
+
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">🎫</span>
+  <h1>IT Ticket Intelligence Agent</h1>
+  <span class="badge">Strands SDK</span>
+  <span class="aws-badge">☁ Amazon Bedrock Nova</span>
+  <span style="margin-left:auto; font-size:0.8rem; color:#8b949e" id="status-dot">● Ready</span>
+</header>
+
+<div class="layout">
+  <!-- LEFT -->
+  <div class="left">
+
+    <!-- Input -->
+    <div class="input-card">
+      <h2>Submit Ticket</h2>
+      <textarea id="desc" placeholder="Describe the IT issue... e.g. CodePipeline deploy failed — ECS task OOM killed"></textarea>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="submitTicket()">▶ Run Agent</button>
+        <button class="btn btn-demo" onclick="runDemo(1)">🔧 CI/CD OOM</button>
+        <button class="btn btn-demo" onclick="runDemo(2)">🔑 IAM Denied</button>
+        <button class="btn btn-demo" onclick="runDemo(3)">🗄 Glue Timeout</button>
+        <button class="btn btn-demo" onclick="runDemo(4)">🖥 Disk Full</button>
+        <button class="btn btn-demo" onclick="runDemo(5)">🌐 API 503</button>
+      </div>
+    </div>
+
+    <!-- Flow Diagram -->
+    <div class="flow-card">
+      <h2>Agent Flow</h2>
+      <div class="flow">
+        <div class="flow-step" id="step-intake">
+          <div class="step-icon">📥</div>
+          <div class="step-label">Intake</div>
+        </div>
+        <div class="flow-step" id="step-classify">
+          <div class="step-icon">🤖</div>
+          <div class="step-label">Classify<br><small style="color:#8b949e;font-size:0.65rem">Bedrock Nova</small></div>
+        </div>
+        <div class="flow-step" id="step-pattern">
+          <div class="step-icon">🔍</div>
+          <div class="step-label">Pattern<br><small style="color:#8b949e;font-size:0.65rem">Match</small></div>
+        </div>
+        <div class="flow-step" id="step-subagent">
+          <div class="step-icon">⚡</div>
+          <div class="step-label">Sub-Agent<br><small style="color:#8b949e;font-size:0.65rem">Specialist</small></div>
+        </div>
+        <div class="flow-step" id="step-approval">
+          <div class="step-icon">✅</div>
+          <div class="step-label">Resolve</div>
+        </div>
+      </div>
+
+      <!-- Sub-agents row -->
+      <div style="margin-top:24px;">
+        <div style="font-size:0.75rem;color:#8b949e;margin-bottom:8px;">SPECIALIST AGENTS</div>
+        <div class="agents-row">
+          <div class="agent-box" id="agent-cicd"><span class="agent-icon">🔧</span>CI/CD</div>
+          <div class="agent-box" id="agent-data"><span class="agent-icon">🗄️</span>Data/ETL</div>
+          <div class="agent-box" id="agent-infra"><span class="agent-icon">🖥️</span>Infra</div>
+          <div class="agent-box" id="agent-access"><span class="agent-icon">🔑</span>Access/IAM</div>
+          <div class="agent-box" id="agent-network"><span class="agent-icon">🌐</span>Network</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div class="result-card" id="result-card">
+      <h2>Result</h2>
+      <div id="result-tags"></div>
+      <div class="conf-bar-wrap" id="conf-wrap" style="display:none">
+        <span style="font-size:0.75rem;color:#8b949e;width:80px">Confidence</span>
+        <div class="conf-bar"><div class="conf-fill" id="conf-fill" style="width:0%"></div></div>
+        <span id="conf-pct" style="font-size:0.8rem;color:#8b949e">0%</span>
+      </div>
+      <div class="fix-box">
+        <h3>📋 Issue Summary</h3>
+        <p id="result-issue"></p>
+      </div>
+      <div class="fix-box">
+        <h3>🛠 Remediation Steps</h3>
+        <div class="fix-steps" id="result-steps"></div>
+      </div>
+      <div class="fix-box" id="result-resources-box" style="display:none">
+        <h3>☁ AWS Resources</h3>
+        <p id="result-resources" style="font-size:0.8rem;color:#58a6ff"></p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT — LOG -->
+  <div class="right">
+    <div class="right-header">
+      <h2>Live Event Log <span id="log-spinner" style="display:none"><span class="spinner"></span></span></h2>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="history-section">
+      <h3>Recent Tickets</h3>
+      <div id="history"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let currentRun = null;
+
+const STEP_NAMES = {
+  intake: "step-intake", classify: "step-classify",
+  pattern: "step-pattern", subagent: "step-subagent", approval: "step-approval"
+};
+const AGENT_MAP = {
+  "CI/CD": "agent-cicd", "Data/ETL": "agent-data",
+  "Infrastructure": "agent-infra", "Access/IAM": "agent-access", "Network": "agent-network"
+};
+const CAT_TAG = {
+  "CI/CD":"tag-cicd","Data/ETL":"tag-data","Infrastructure":"tag-infra",
+  "Access/IAM":"tag-access","Network":"tag-network","Unknown":"tag-unknown"
+};
+
+function resetFlow() {
+  Object.values(STEP_NAMES).forEach(id => {
+    const el = document.getElementById(id);
+    el.className = "flow-step";
+  });
+  Object.values(AGENT_MAP).forEach(id => {
+    document.getElementById(id).className = "agent-box";
+  });
+  document.getElementById("result-card").classList.remove("show");
+  document.getElementById("log").innerHTML = "";
+}
+
+function setStep(step, status) {
+  const id = STEP_NAMES[step];
+  if (id) document.getElementById(id).className = `flow-step ${status}`;
+}
+
+function highlightAgent(category) {
+  Object.values(AGENT_MAP).forEach(id => document.getElementById(id).className = "agent-box");
+  const id = AGENT_MAP[category];
+  if (id) document.getElementById(id).className = "agent-box active";
+}
+
+function doneAgent(category) {
+  const id = AGENT_MAP[category];
+  if (id) document.getElementById(id).className = "agent-box done";
+}
+
+function addLog(data) {
+  const log = document.getElementById("log");
+  const entry = document.createElement("div");
+  entry.className = `log-entry ${data.status}`;
+  const stepLabel = {intake:"📥 Intake",classify:"🤖 Classify",pattern:"🔍 Pattern",subagent:"⚡ Sub-Agent",approval:"✅ Resolve"}[data.step] || data.step;
+  entry.innerHTML = `
+    <div class="log-ts">${data.ts}</div>
+    <div class="log-msg">${stepLabel} — <strong>${data.status.toUpperCase()}</strong></div>
+    ${data.detail ? `<div class="log-detail">${data.detail}</div>` : ""}
+    ${data.category ? `<div class="log-detail">Category: <strong>${data.category}</strong> | Severity: <strong>${data.severity}</strong></div>` : ""}
+  `;
+  log.prepend(entry);
+}
+
+socket.on("start", data => {
+  currentRun = data.run_id;
+  resetFlow();
+  document.getElementById("status-dot").innerHTML = `<span class="spinner"></span> Processing...`;
+  document.getElementById("log-spinner").style.display = "inline";
+  addLog({step:"intake", status:"active", detail:`"${data.description.substring(0,60)}..."`, ts: new Date().toLocaleTimeString()});
+});
+
+socket.on("step", data => {
+  if (data.run_id !== currentRun) return;
+  setStep(data.step, data.status);
+  addLog(data);
+
+  if (data.step === "subagent" && data.status === "active" && data.category) {
+    highlightAgent(data.category);
+  }
+  if (data.step === "subagent" && (data.status === "done")) {
+    // will be set from result
+  }
+});
+
+socket.on("result", data => {
+  document.getElementById("status-dot").innerHTML = "● Ready";
+  document.getElementById("log-spinner").style.display = "none";
+
+  // Tags
+  const catClass = CAT_TAG[data.category] || "tag-unknown";
+  const sevClass = `tag-${(data.severity||"p3").toLowerCase()}`;
+  const patBadge = data.pattern_status === "RECURRING"
+    ? `<span class="tag" style="background:#d2992233;color:#d29922;border:1px solid #d29922">🔄 RECURRING</span>`
+    : `<span class="tag" style="background:#a371f733;color:#a371f7;border:1px solid #a371f7">✨ NEW</span>`;
+  document.getElementById("result-tags").innerHTML =
+    `<span class="tag ${catClass}">${data.category}</span>` +
+    `<span class="tag ${sevClass}">${data.severity}</span>` +
+    patBadge;
+
+  // Confidence bar
+  if (data.pattern_confidence > 0) {
+    document.getElementById("conf-wrap").style.display = "flex";
+    const pct = data.pattern_confidence;
+    const fill = document.getElementById("conf-fill");
+    fill.style.width = pct + "%";
+    fill.className = `conf-fill ${pct>=80?"high":pct>=50?"med":"low"}`;
+    document.getElementById("conf-pct").textContent = pct + "%";
+  }
+
+  document.getElementById("result-issue").textContent = data.issue_summary;
+  document.getElementById("result-steps").textContent = data.remediation_steps;
+
+  if (data.aws_resources && data.aws_resources.length) {
+    document.getElementById("result-resources-box").style.display = "block";
+    document.getElementById("result-resources").textContent = data.aws_resources.join("\n");
+  }
+
+  document.getElementById("result-card").classList.add("show");
+  doneAgent(data.category);
+
+  // History
+  addHistory(data);
+});
+
+function addHistory(data) {
+  const h = document.getElementById("history");
+  const item = document.createElement("div");
+  item.className = "history-item";
+  item.innerHTML = `
+    <span class="h-status">✓</span>
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${data.category} — ${data.issue_summary.substring(0,40)}...</span>
+    <span style="color:#8b949e">${data.severity}</span>
+  `;
+  h.prepend(item);
+}
+
+function submitTicket() {
+  const desc = document.getElementById("desc").value.trim();
+  if (!desc) return;
+  fetch("/api/submit", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({description: desc})});
+}
+
+function runDemo(n) {
+  fetch(`/api/demo/${n}`, {method:"POST"});
+}
+
+document.getElementById("desc").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.ctrlKey) submitTicket();
+});
+
+// Load history on start
+fetch("/api/history").then(r=>r.json()).then(data => data.forEach(addHistory));
+</script>
+</body>
+</html>

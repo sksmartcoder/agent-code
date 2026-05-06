@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: IT Ticket Intelligence Agent — DynamoDB tables + S3 runbook bucket
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: hackathon
+
+Resources:
+
+  # ── S3 Runbook Bucket ───────────────────────────────────────────────────────
+  RunbookBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${EnvironmentName}-it-ticket-runbooks-${AWS::AccountId}"
+
+  # ── DynamoDB: Tickets ───────────────────────────────────────────────────────
+  TicketsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${EnvironmentName}_it_tickets"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: ticket_id
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: ticket_id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: category-status-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+            - AttributeName: status
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ── DynamoDB: Patterns ──────────────────────────────────────────────────────
+  PatternsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${EnvironmentName}_ticket_patterns"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: pattern_id
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: pattern_id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: category-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ── DynamoDB: Resolutions ───────────────────────────────────────────────────
+  ResolutionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${EnvironmentName}_resolutions"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: resolution_id
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: resolution_id
+          AttributeType: S
+        - AttributeName: ticket_id
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: ticket-index
+          KeySchema:
+            - AttributeName: ticket_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+Outputs:
+  TicketsTable:
+    Value: !Ref TicketsTable
+  PatternsTable:
+    Value: !Ref PatternsTable
+  ResolutionsTable:
+    Value: !Ref ResolutionsTable
+  RunbookBucket:
+    Value: !Ref RunbookBucket

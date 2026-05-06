@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os
+import json, os, boto3
 from strands import Agent
 from strands.models import BedrockModel
 import sys
@@ -22,6 +22,19 @@ def _build_model():
     return BedrockModel(model_id=config.BEDROCK_MODEL_ID, region_name=config.BEDROCK_REGION,
                         max_tokens=1024, temperature=0.2)
 
+def _call_nova(system_prompt: str, prompt: str) -> str:
+    """Direct boto3 call for Nova models (bypasses Strands streaming issue)."""
+    client = boto3.client("bedrock-runtime", region_name=config.BEDROCK_REGION)
+    body = json.dumps({
+        "system": [{"text": system_prompt}],
+        "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        "inferenceConfig": {"maxTokens": 1024, "temperature": 0.2},
+    })
+    r = client.invoke_model(
+        modelId=config.BEDROCK_MODEL_ID, body=body,
+        contentType="application/json", accept="application/json")
+    return json.loads(r["body"].read())["output"]["message"]["content"][0]["text"]
+
 class BaseSubAgent:
     domain = "Unknown"
     category = "Unknown"
@@ -37,8 +50,11 @@ class BaseSubAgent:
         )
         prompt = f"Ticket: {ticket_id}\nCategory: {category}\nSeverity: {severity}\nDescription: {description}"
         try:
-            agent = Agent(model=_build_model(), system_prompt=system_prompt)
-            suggestion = self._parse_fix(str(agent(prompt)))
+            if os.environ.get("USE_ANTHROPIC", "").lower() == "true":
+                agent = Agent(model=_build_model(), system_prompt=system_prompt)
+                suggestion = self._parse_fix(str(agent(prompt)))
+            else:
+                suggestion = self._parse_fix(_call_nova(system_prompt, prompt))
         except Exception as e:
             suggestion = FixSuggestion(
                 issue_summary=f"Agent error: {e}",

@@ -15,7 +15,7 @@ import os, sys, json
 # If not set, fall back to values below for convenience
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
 os.environ.setdefault("BEDROCK_REGION", "us-west-2")
-os.environ.setdefault("BEDROCK_MODEL_ID", "anthropic.claude-sonnet-4-5-20250929-v1:0")
+os.environ.setdefault("BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
 os.environ.setdefault("CONFIDENCE_THRESHOLD", "80")
 
 # Use local table names (moto will create them in-memory)
@@ -26,7 +26,11 @@ os.environ["RUNBOOK_BUCKET"]    = "local-runbooks"
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-# ── Start moto mock for DynamoDB and S3 ──────────────────────────────────────
+# ── Create real Bedrock client BEFORE moto starts ────────────────────────────
+import boto3 as _real_boto3
+_real_bedrock = _real_boto3.client("bedrock-runtime", region_name=os.environ["BEDROCK_REGION"])
+
+# ── Start moto mock for DynamoDB, S3, Glue ───────────────────────────────────
 from moto import mock_aws
 import boto3
 
@@ -97,6 +101,23 @@ if os.path.isdir(runbooks_dir):
                 s3.put_object(Bucket=config.RUNBOOK_BUCKET, Key=f"runbooks/{fname}", Body=f.read())
     print(f"Uploaded {len([f for f in os.listdir(runbooks_dir) if f.endswith('.md')])} runbooks to mock S3.")
 
+# ── Seed mock Glue jobs (simulates real failed ETL jobs) ─────────────────────
+glue = boto3.client("glue", region_name=config.REGION)
+for job_name, script in [
+    ("daily_claims_load",  "s3://mock-scripts/daily_claims_load.py"),
+    ("etl_pipeline",       "s3://mock-scripts/etl_pipeline.py"),
+    ("claims_transform",   "s3://mock-scripts/claims_transform.py"),
+]:
+    glue.create_job(
+        Name=job_name,
+        Role="arn:aws:iam::123456789:role/GlueRole",
+        Command={"Name": "glueetl", "ScriptLocation": script, "PythonVersion": "3"},
+    )
+    # Seed a failed run so the agent detects it and re-triggers
+    glue.start_job_run(JobName=job_name)
+
+print(f"Seeded 3 mock Glue jobs (daily_claims_load, etl_pipeline, claims_transform).")
+
 # ── Seed recurring patterns and resolutions ───────────────────────────────────
 from tools.models import TicketPattern, Resolution
 from tools.ticket_store import create_pattern
@@ -150,14 +171,38 @@ for pattern, resolution in seeds:
 
 print(f"Seeded {len(seeds)} patterns and resolutions.\n")
 
-# ── Build a real Bedrock client (bypasses moto for Bedrock calls) ─────────────
-import botocore.session as _bs
+# ── Inject real Bedrock client into classifier and base_agent ─────────────────
+import tools.classifier as _clf
+import agent_core.base_agent as _ba
+_orig_clf = _clf._call_nova
+_orig_ba  = _ba._call_nova
 
-real_bedrock = boto3.client(
-    "bedrock-runtime",
-    region_name=os.environ["BEDROCK_REGION"],
-    # credentials come from environment variables already set
-)
+def _patched_nova_clf(prompt):
+    import json
+    body = json.dumps({
+        "system": [{"text": _clf.SYSTEM_PROMPT}],
+        "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        "inferenceConfig": {"maxTokens": 256, "temperature": 0.1},
+    })
+    r = _real_bedrock.invoke_model(
+        modelId=os.environ["BEDROCK_MODEL_ID"], body=body,
+        contentType="application/json", accept="application/json")
+    return json.loads(r["body"].read())["output"]["message"]["content"][0]["text"]
+
+def _patched_nova_ba(system_prompt, prompt):
+    import json
+    body = json.dumps({
+        "system": [{"text": system_prompt}],
+        "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        "inferenceConfig": {"maxTokens": 1024, "temperature": 0.2},
+    })
+    r = _real_bedrock.invoke_model(
+        modelId=os.environ["BEDROCK_MODEL_ID"], body=body,
+        contentType="application/json", accept="application/json")
+    return json.loads(r["body"].read())["output"]["message"]["content"][0]["text"]
+
+_clf._call_nova = _patched_nova_clf
+_ba._call_nova  = _patched_nova_ba
 
 # ── Run the agent ─────────────────────────────────────────────────────────────
 from agent_core.master_agent import MasterAgent
