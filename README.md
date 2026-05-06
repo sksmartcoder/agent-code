@@ -1,132 +1,66 @@
 # IT Ticket Intelligence Agent
 
-AI-powered IT support triage using multi-agent orchestration on AWS. Classifies tickets, detects recurring patterns, suggests fixes, and routes to the right team — all with a human-in-the-loop approval step.
+AI-powered IT support triage using multi-agent orchestration on AWS. Classifies tickets, detects recurring patterns, auto-remediates (e.g. Glue job re-run), and routes to the right specialist agent — all powered by Amazon Bedrock Nova.
 
----
-
-## Architecture Diagram
-
+**Hackathon Demo URL (live now):**
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         YOUR MACHINE / EC2                          │
-│                                                                     │
-│   ┌─────────────┐     ┌──────────────────────────────────────────┐ │
-│   │  CLI Input  │────▶│           MASTER AGENT                   │ │
-│   │  app.py     │     │  (Strands Agent SDK + Amazon Bedrock)    │ │
-│   └─────────────┘     │                                          │ │
-│                        │  1. Validate & create ticket             │ │
-│                        │  2. Classify (Category + Severity)       │ │
-│                        │  3. Pattern match vs DynamoDB history    │ │
-│                        │  4. Route: RECURRING or NEW              │ │
-│                        │  5. Present fix → approve / reject       │ │
-│                        │  6. Log resolution + update patterns     │ │
-│                        └──────────┬───────────────────────────────┘ │
-│                                   │                                 │
-│              ┌────────────────────┼────────────────────┐           │
-│              ▼                    ▼                    ▼           │
-│   ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐  │
-│   │   CI/CD Agent    │ │  Data/ETL Agent  │ │   Infra Agent    │  │
-│   │  (Strands SDK)   │ │  (Strands SDK)   │ │  (Strands SDK)   │  │
-│   └──────────────────┘ └──────────────────┘ └──────────────────┘  │
-│              ▼                    ▼                    ▼           │
-│   ┌──────────────────┐ ┌──────────────────┐                        │
-│   │  Access/IAM Agent│ │  Network Agent   │                        │
-│   │  (Strands SDK)   │ │  (Strands SDK)   │                        │
-│   └──────────────────┘ └──────────────────┘                        │
-└─────────────────────────────────────────────────────────────────────┘
-                    │                    │
-          ┌─────────▼──────┐   ┌────────▼────────┐
-          │   AWS DynamoDB  │   │     AWS S3      │
-          │                 │   │                 │
-          │ • it_tickets    │   │ • cicd_runbook  │
-          │ • ticket_patterns│  │ • data_runbook  │
-          │ • resolutions   │   │ • infra_runbook │
-          └─────────────────┘   │ • access_runbook│
-                                │ • network_runbook│
-                                └─────────────────┘
-                    │
-          ┌─────────▼──────────┐
-          │  Amazon Bedrock    │
-          │  Claude 3 Sonnet   │
-          │  (LLM backbone)    │
-          └────────────────────┘
+http://amzn-hackthon-it-ticket-system.s3-website-us-west-2.amazonaws.com
 ```
 
 ---
 
-## Process Flow Diagram
+## What It Does
+
+1. You submit an IT support ticket (text description)
+2. **Master Agent** classifies it by category and severity using Bedrock Nova
+3. Checks if it's a **recurring pattern** (88%+ confidence match)
+4. Routes to the right **specialist sub-agent** (CI/CD, Data/ETL, Infra, Access/IAM, Network)
+5. Sub-agent fetches the runbook from S3 and generates a fix using AI
+6. For Data/ETL tickets — **automatically re-triggers failed Glue jobs**
+7. Presents the fix for operator approval → logs resolution
+
+---
+
+## Architecture
 
 ```
-Operator submits ticket via CLI
-           │
-           ▼
-┌─────────────────────┐
-│  Validate input     │──── empty/whitespace ──▶ REJECTED (no DB write)
-└─────────┬───────────┘
-          │ valid
-          ▼
-┌─────────────────────┐
-│  Create ticket      │  UUID assigned, status = OPEN
-│  Write to DynamoDB  │  Audit trail started
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  Classify ticket    │  Bedrock LLM → Category + Severity
-│  (Master Agent)     │  Fallback: Unknown / P3
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  Pattern Match      │  Query ticket_patterns by Category
-│  Confidence Score   │  Jaccard similarity on keywords
-└─────────┬───────────┘
-          │
-     ┌────┴────┐
-     │         │
-confidence   confidence
-  ≥ 80%       < 80%
-     │         │
-     ▼         ▼
-┌─────────┐  ┌──────────────────────────────────────┐
-│RECURRING│  │ NEW — delegate to specialist sub-agent│
-│  PATH   │  │                                       │
-└────┬────┘  │  CI/CD Agent    → cicd_runbook.md     │
-     │       │  Data/ETL Agent → data_runbook.md     │
-     │       │  Infra Agent    → infra_runbook.md    │
-     │       │  Access Agent   → access_runbook.md   │
-     │       │  Network Agent  → network_runbook.md  │
-     │       │                                       │
-     │       │  S3 runbook found?                    │
-     │       │    YES → HIGH confidence fix          │
-     │       │    NO  → LLM-only LOW_CONFIDENCE fix  │
-     │       └──────────────────┬────────────────────┘
-     │                          │
-     ▼                          ▼
-┌─────────────────────────────────────┐
-│  Present fix to operator (CLI)      │
-│  Ticket ID, Category, Severity,     │
-│  Issue summary, Remediation steps   │
-│  Status → PENDING_APPROVAL          │
-└─────────────┬───────────────────────┘
-              │
-         ┌────┴────┐
-         │         │
-      approve    reject
-         │         │
-         ▼         ▼
-   ┌──────────┐  ┌──────────────────┐
-   │ RESOLVED │  │ REJECTED         │
-   │          │  │ Reason captured  │
-   │ Write    │  │ Status updated   │
-   │ Resolution│  └──────────────────┘
-   │ to DB    │
-   │          │
-   │ RECURRING?│
-   │  YES → increment pattern count
-   │  NO  → create new pattern entry
-   └──────────┘
+Browser / CLI
+     │
+     ▼
+┌─────────────────────────────────────────────┐
+│           MASTER AGENT                      │
+│  (Strands SDK + Amazon Bedrock Nova Lite)   │
+│                                             │
+│  1. Validate & create ticket                │
+│  2. Classify → Category + Severity          │
+│  3. Pattern match (Jaccard similarity)      │
+│  4. Route: RECURRING or NEW                 │
+│  5. Present fix → approve / reject          │
+│  6. Log resolution + update patterns        │
+└──────────────┬──────────────────────────────┘
+               │
+    ┌──────────┼──────────────────────┐
+    ▼          ▼          ▼           ▼
+🔧 CI/CD   🗄 Data/ETL  🖥 Infra   🔑 Access/IAM   🌐 Network
+ Agent      Agent       Agent       Agent           Agent
+    │          │
+    │     Auto re-run
+    │     Glue jobs ──▶ AWS Glue
+    │
+    ▼
+Amazon Bedrock Nova Lite  ←──  S3 Runbooks
+(AI fix generation)
 ```
+
+**AWS Services used:**
+| Service | Purpose |
+|---|---|
+| Amazon Bedrock Nova Lite | AI classification + fix generation |
+| AWS Lambda | API backend for web dashboard |
+| Amazon S3 | Static web dashboard + runbook storage |
+| AWS Glue (mocked) | ETL job re-run automation |
+| DynamoDB (mocked) | Ticket + pattern + resolution storage |
+| AgentCore Runtime | Cloud agent deployment |
 
 ---
 
@@ -134,216 +68,179 @@ confidence   confidence
 
 ```
 it-ticket-agent/
-├── app.py                      # CLI entry point
-├── config.py                   # Env var config (table names, model ID)
-├── requirements.txt
+├── app.py                    # CLI entry point
+├── config.py                 # Environment config
+├── demo.py                   # Rich terminal demo (visual CLI)
+├── run_local.py              # Interactive local runner
+├── test_local.py             # Full test suite (no AWS needed)
+├── agentcore_app.py          # AgentCore Runtime entrypoint
 │
 ├── agent_core/
-│   ├── master_agent.py         # Orchestrator — full triage pipeline
-│   ├── base_agent.py           # Shared Strands Agent logic for sub-agents
-│   ├── cicd_agent.py           # CI/CD specialist
-│   ├── data_agent.py           # Data/ETL specialist
-│   ├── infra_agent.py          # Infrastructure specialist
-│   ├── access_agent.py         # Access/IAM specialist
-│   └── network_agent.py        # Network specialist
+│   ├── master_agent.py       # Orchestrator
+│   ├── base_agent.py         # Shared Strands Agent logic
+│   ├── cicd_agent.py         # CI/CD specialist
+│   ├── data_agent.py         # Data/ETL + Glue auto-remediation
+│   ├── infra_agent.py        # Infrastructure specialist
+│   ├── access_agent.py       # Access/IAM specialist
+│   └── network_agent.py      # Network specialist
 │
 ├── tools/
-│   ├── models.py               # Ticket, TicketPattern, Resolution dataclasses
-│   ├── ticket_store.py         # DynamoDB CRUD + validation + resolution logging
-│   ├── classifier.py           # Bedrock classification via Strands Agent
-│   ├── pattern_matcher.py      # Confidence scoring + RECURRING/NEW routing
-│   ├── knowledge_base.py       # S3 runbook fetch
-│   └── notifier.py             # CLI approve/reject flow
+│   ├── models.py             # Ticket, Pattern, Resolution dataclasses
+│   ├── ticket_store.py       # DynamoDB CRUD + validation
+│   ├── classifier.py         # Bedrock Nova classification
+│   ├── pattern_matcher.py    # Confidence scoring + routing
+│   ├── knowledge_base.py     # S3 runbook fetch
+│   └── notifier.py           # Approval flow
 │
-├── knowledge_base/
+├── knowledge_base/           # Domain runbooks (uploaded to S3)
 │   ├── cicd_runbook.md
 │   ├── data_runbook.md
 │   ├── infra_runbook.md
 │   ├── access_runbook.md
 │   └── network_runbook.md
 │
-├── data/
-│   ├── synthetic_tickets.json  # 20+ demo tickets + patterns + resolutions
-│   └── load_tickets.py         # Seed DynamoDB from JSON
+├── dashboard/
+│   ├── server.py             # Flask + SocketIO web dashboard
+│   └── templates/index.html  # Dashboard UI
 │
-├── infrastructure/
-│   ├── template.yaml           # CloudFormation: DynamoDB tables + S3 bucket
-│   └── setup.py                # One-command deploy + seed
+├── lambda/
+│   ├── handler.py            # Lambda function handler
+│   ├── deploy_lambda.py      # Deploy Lambda + Function URL
+│   ├── deploy_static.py      # Deploy static site to S3
+│   └── function_url.txt      # Lambda URL (auto-generated)
 │
-└── test_local.py               # Full test suite (no AWS creds needed)
+└── infrastructure/
+    ├── template.yaml         # CloudFormation template
+    └── deploy.sh             # Deploy script
 ```
 
 ---
 
-## Quick Start — Local Machine (No AWS needed)
+## Option 1 — Web Dashboard (Recommended for Demo)
 
-### 1. Clone / copy the project
-
-```bash
-git clone <your-repo-url>
-cd it-ticket-agent
+**Already live — open in any browser:**
+```
+http://amzn-hackthon-it-ticket-system.s3-website-us-west-2.amazonaws.com
 ```
 
-### 2. Install dependencies
+Click any demo button and watch the agent flow in real time:
+- Flow diagram lights up step by step
+- Real Bedrock Nova AI classifies the ticket
+- Confidence bar shows pattern match score
+- Color-coded fix suggestion with remediation steps
 
+**To redeploy the dashboard after code changes:**
 ```bash
-pip install strands-agents strands-agents-tools moto[dynamodb,s3] boto3 pytest
-```
-
-### 3. Run tests locally (mock LLM + mock AWS)
-
-```bash
-python test_local.py
-```
-
-All 21 tests run with zero AWS credentials. DynamoDB and S3 are mocked via `moto`. The Strands Agent is stubbed to return canned responses.
-
-### 4. Run with a real LLM (Anthropic — no AWS needed)
-
-```bash
-pip install 'strands-agents[anthropic]'
-export USE_ANTHROPIC=true
-export ANTHROPIC_API_KEY=sk-ant-...
-python test_local.py
-```
-
-### 5. Run a single ticket interactively
-
-```bash
-python app.py "CodePipeline deploy failed — ECS task OOM killed"
+python3 lambda/deploy_lambda.py    # redeploy Lambda backend
+python3 lambda/deploy_static.py    # redeploy S3 frontend
 ```
 
 ---
 
-## Quick Start — EC2 (Hackathon Sandbox)
+## Option 2 — Rich Terminal Demo
 
-### 1. SSH into your EC2 instance
+Best for showing the full pipeline in a terminal:
 
 ```bash
-ssh -i hackathon-key.pem ec2-user@<your-ec2-ip>
+python3 demo.py
 ```
 
-### 2. Copy the project
+Pick a scenario from the menu. Shows:
+- Live step-by-step flow with spinner
+- Color-coded category/severity
+- Confidence bar
+- Formatted fix panel with remediation steps
+
+---
+
+## Option 3 — Run Tests (No AWS Needed)
+
+Zero credentials required — uses moto mocks + stubbed LLM:
 
 ```bash
-scp -i hackathon-key.pem -r it-ticket-agent/ ec2-user@<your-ec2-ip>:~/
+python3 test_local.py
 ```
 
-Or clone directly on EC2 if you pushed to a repo.
+Expected output: **21 tests, all passing.**
 
-### 3. Install dependencies
-
+To test with real Bedrock Nova (requires AWS credentials):
 ```bash
-cd it-ticket-agent
-pip install strands-agents strands-agents-tools boto3
-```
-
-### 4. Deploy infrastructure (CloudFormation)
-
-```bash
-python infrastructure/setup.py
-```
-
-This creates:
-- DynamoDB tables: `hackathon_it_tickets`, `hackathon_ticket_patterns`, `hackathon_resolutions`
-- S3 bucket for runbooks
-- Uploads all 5 runbooks
-- Seeds 20 synthetic tickets + patterns
-
-### 5. Enable Bedrock model access
-
-In the AWS console:
-1. Go to **Amazon Bedrock → Model access**
-2. Enable **Claude 3 Sonnet** (`anthropic.claude-3-sonnet-20240229-v1:0`)
-
-### 6. Run the agent
-
-```bash
-python app.py "CodePipeline deploy failed — ECS task OOM killed"
-```
-
-### 7. Run tests against real AWS
-
-```bash
-python test_local.py   # still uses moto by default — safe to run anytime
+python3 run_local.py
 ```
 
 ---
 
-## Environment Variables
+## Setup for Team Members
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AWS_DEFAULT_REGION` | `us-east-1` | AWS region |
-| `ENVIRONMENT` | `hackathon` | Prefix for DynamoDB table names |
-| `TICKETS_TABLE` | `hackathon_it_tickets` | Override table name |
-| `PATTERNS_TABLE` | `hackathon_ticket_patterns` | Override table name |
-| `RESOLUTIONS_TABLE` | `hackathon_resolutions` | Override table name |
-| `RUNBOOK_BUCKET` | `hackathon-it-ticket-runbooks` | S3 bucket name |
-| `BEDROCK_MODEL_ID` | `anthropic.claude-3-sonnet-20240229-v1:0` | Bedrock model |
-| `CONFIDENCE_THRESHOLD` | `80` | Pattern match threshold (0–100) |
-| `USE_ANTHROPIC` | `false` | Set `true` to use Anthropic instead of Bedrock |
-| `ANTHROPIC_API_KEY` | — | Required if `USE_ANTHROPIC=true` |
+### Prerequisites
+```bash
+pip install -r requirements.txt
+```
+
+### Environment (already set on the hackathon EC2)
+```bash
+export AWS_DEFAULT_REGION=us-west-2
+export BEDROCK_REGION=us-west-2
+export BEDROCK_MODEL_ID=us.amazon.nova-lite-v1:0
+```
+
+Or copy the `.env` file and load it:
+```bash
+source .env   # or: export $(cat .env | xargs)
+```
+
+### Run tests to verify your setup
+```bash
+python3 test_local.py
+```
+
+All 21 tests should pass. If they do, your environment is good.
 
 ---
 
 ## Demo Scenarios
 
-Run these tickets to showcase the full agent flow:
+Five pre-seeded scenarios covering all 5 agent categories:
 
+| # | Ticket | Category | Pattern |
+|---|--------|----------|---------|
+| 1 | `CodePipeline deploy failed — ECS task OOM killed` | CI/CD | 🔄 RECURRING (88%) |
+| 2 | `Lambda function can't write to S3 bucket prod-reports` | Access/IAM | ✨ NEW |
+| 3 | `Glue job daily_claims_load failed with connection timeout` | Data/ETL | ✨ NEW + auto re-run |
+| 4 | `EC2 instance i-0abc123 unreachable, disk at 98%` | Infrastructure | ✨ NEW |
+| 5 | `API gateway returning 503, backend health checks failing` | Network | ✨ NEW |
+
+**Scenario 1** is the best for showing the recurring pattern path — it matches at 88% confidence and pulls a proven fix instantly without calling the LLM sub-agent.
+
+**Scenario 3** shows the Glue auto-remediation — the agent detects the job name, checks its status, and re-triggers it automatically.
+
+---
+
+## How to Test as a Team
+
+### Individual testing (no coordination needed)
+Each team member runs:
 ```bash
-# Scenario 1: RECURRING — CI/CD OOM (matches pattern, pulls proven fix)
-python app.py "CodePipeline deploy failed — ECS task OOM killed"
-
-# Scenario 2: NEW — Access/IAM (sub-agent investigates)
-python app.py "Lambda function can't write to S3 bucket prod-reports"
-
-# Scenario 3: RECURRING — Data/ETL timeout
-python app.py "Glue job daily_claims_load failed with connection timeout"
-
-# Scenario 4: NEW — Infrastructure P1
-python app.py "EC2 instance i-0abc123 unreachable, disk at 98%"
-
-# Scenario 5: NEW — Network P1
-python app.py "API gateway returning 503, backend health checks failing"
+python3 test_local.py
 ```
+This is fully isolated — uses in-memory mocks, no shared state.
 
----
-
-## Team Setup (Multiple Members)
-
-Each team member can work independently:
-
-| Member | Focus | Files |
-|--------|-------|-------|
-| Dev 1 | Master Agent + classifier | `agent_core/master_agent.py`, `tools/classifier.py` |
-| Dev 2 | DynamoDB tools + pattern matcher | `tools/ticket_store.py`, `tools/pattern_matcher.py` |
-| Dev 3 | Sub-agents + runbooks | `agent_core/*_agent.py`, `knowledge_base/*.md` |
-| All | Integration + demo | `test_local.py`, `app.py` |
-
-Everyone runs `python test_local.py` to verify their changes without needing AWS access.
-
----
-
-## How the Strands Agent SDK is Used
-
-```python
-from strands import Agent
-from strands.models import BedrockModel
-
-# Classifier — single-turn, structured JSON output
-model = BedrockModel(model_id="anthropic.claude-3-sonnet-20240229-v1:0", region_name="us-east-1")
-agent = Agent(model=model, system_prompt="You are an IT triage assistant...")
-response = agent("Classify this ticket: CodePipeline deploy failed")
-# → {"category": "CI/CD", "severity": "P2", "rationale": "..."}
-
-# Sub-agent — domain specialist with runbook context injected into system prompt
-agent = Agent(model=model, system_prompt=f"You are a CI/CD specialist.\n{runbook_content}")
-response = agent(f"Ticket: {description}")
-# → {"issue_summary": "...", "remediation_steps": "...", "aws_resources": [...]}
+### Integration testing (shared EC2)
+```bash
+python3 run_local.py
 ```
+Pick a scenario, type `approve` or `reject` when prompted.
 
-Each agent is stateless and single-turn. The Master Agent orchestrates the flow in Python — no Strands multi-agent framework needed, keeping the code simple and debuggable.
+### End-to-end via web
+Open the dashboard URL and click demo buttons. Each click is independent.
+
+### Custom ticket
+In the web dashboard, type any IT issue in the text box and click **Run Agent**.
+
+Or via CLI:
+```bash
+python3 app.py "Your custom ticket description here"
+```
 
 ---
 
@@ -352,8 +249,47 @@ Each agent is stateless and single-turn. The Master Agent orchestrates the flow 
 | Problem | Fix |
 |---------|-----|
 | `ModuleNotFoundError: strands` | `pip install strands-agents` |
-| `AccessDenied` on Bedrock | Enable Claude 3 Sonnet in Bedrock console → Model access |
-| `ResourceNotFoundException` on DynamoDB | Run `python infrastructure/setup.py` first |
-| `NoSuchBucket` on S3 | Run `python infrastructure/setup.py` first |
-| Tests fail with boto3 version error | `pip install boto3 --upgrade` |
-| Pattern not matching (confidence < 80) | Check keywords in `data/synthetic_tickets.json` match ticket wording |
+| `ModuleNotFoundError: moto` | `pip install moto[dynamodb,s3]` |
+| Bedrock `ResourceNotFoundException` | Model not enabled — ask organizers to enable Nova Lite in Bedrock console |
+| Bedrock `AccessDenied` | Check AWS credentials: `aws sts get-caller-identity` |
+| Tests fail | Run `pip install -r requirements.txt` then retry |
+| Dashboard shows error | Check Lambda logs: `aws logs tail /aws/lambda/it-ticket-agent-api --since 5m` |
+| Pattern confidence too low | Ticket wording doesn't match keywords — try the exact demo phrases above |
+
+---
+
+## Key Files to Understand the Code
+
+| File | What to read |
+|------|-------------|
+| `agent_core/master_agent.py` | Full pipeline orchestration — start here |
+| `tools/classifier.py` | How Bedrock Nova classifies tickets |
+| `tools/pattern_matcher.py` | Jaccard similarity confidence scoring |
+| `agent_core/data_agent.py` | Glue job detection + auto re-run logic |
+| `agent_core/base_agent.py` | How sub-agents call Bedrock with runbook context |
+| `test_local.py` | Best way to understand expected behavior |
+
+---
+
+## AgentCore Deployment
+
+The agent is deployed to Amazon Bedrock AgentCore Runtime:
+
+```
+ARN: arn:aws:bedrock-agentcore:us-west-2:628875594738:runtime/it_ticket_agent_agentcore_app-Y14wFRAyTO
+```
+
+To redeploy after changes:
+```bash
+agentcore launch
+```
+
+To invoke via AgentCore CLI:
+```bash
+agentcore invoke '{"prompt": "CodePipeline deploy failed — ECS task OOM killed"}'
+```
+
+To check status:
+```bash
+agentcore status
+```
