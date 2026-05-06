@@ -1,0 +1,82 @@
+[
+  {
+    "pattern_id": "PAT-ECS-OOM",
+    "category": "CI/CD",
+    "keywords": ["ecs", "oom", "killed", "memory", "task", "container", "deploy"],
+    "description_template": "ECS task killed due to OOM during deployment",
+    "proven_fix": "Increase ECS task definition memory from 512MB to 1024MB. Update service to use new task definition revision. Monitor with Container Insights.",
+    "occurrences": 3,
+    "last_seen": "2025-06-22T02:30:00Z",
+    "success_rate": 1.0
+  },
+  {
+    "pattern_id": "PAT-GLUE-TIMEOUT",
+    "category": "Data/ETL",
+    "keywords": ["glue", "connection", "timeout", "jdbc", "redshift", "failed"],
+    "description_template": "Glue job failed with JDBC connection timeout",
+    "proven_fix": "Increase JDBC connection timeout to 120s. Add retry logic with exponential backoff. Consider dedicated Redshift WLM queue for ETL workloads.",
+    "occurrences": 4,
+    "last_seen": "2025-06-23T03:45:00Z",
+    "success_rate": 0.95
+  },
+  {
+    "pattern_id": "PAT-DISK-FULL",
+    "category": "Infrastructure",
+    "keywords": ["disk", "full", "ebs", "volume", "space", "logs", "95%", "98%", "100%"],
+    "description_template": "EBS volume disk full due to log accumulation",
+    "proven_fix": "1. Clean old logs: find /var/log -mtime +7 -delete. 2. Extend EBS volume. 3. Add logrotate config. 4. Set CloudWatch alarm at 80%.",
+    "occurrences": 3,
+    "last_seen": "2025-06-22T05:30:00Z",
+    "success_rate": 1.0
+  },
+  {
+    "pattern_id": "PAT-SG-ALB",
+    "category": "Network",
+    "keywords": ["security group", "alb", "503", "health check", "port", "inbound"],
+    "description_template": "Service unreachable through ALB due to missing security group rule",
+    "proven_fix": "Add inbound rule to service security group allowing traffic from ALB security group on the application port. Verify health check path and port match.",
+    "occurrences": 3,
+    "last_seen": "2025-06-23T11:00:00Z",
+    "success_rate": 1.0
+  },
+  {
+    "pattern_id": "PAT-SCHEMA-CHANGE",
+    "category": "Data/ETL",
+    "keywords": ["schema", "column", "added", "change", "upstream", "broke", "new field"],
+    "description_template": "Upstream schema change broke ETL pipeline",
+    "proven_fix": "Enable schema evolution in Glue job using ResolveChoice. Add schema change detection alert. Implement upstream schema contract validation.",
+    "occurrences": 3,
+    "last_seen": "2025-06-24T03:30:00Z",
+    "success_rate": 0.9
+  },
+  {
+    "pattern_id": "PAT-LAMBDA-S3-PERM",
+    "category": "Access/IAM",
+    "keywords": ["lambda", "s3", "permission", "denied", "putobject", "write", "access"],
+    "description_template": "Lambda function missing S3 write permissions",
+    "proven_fix": "Add inline policy to Lambda execution role with s3:PutObject scoped to specific bucket/prefix. Include KMS encryption condition if bucket is encrypted.",
+    "occurrences": 2,
+    "last_seen": "2025-06-20T10:00:00Z",
+    "success_rate": 1.0
+  },
+  {
+    "pattern_id": "PAT-TERRAFORM-LOCK",
+    "category": "CI/CD",
+    "keywords": ["terraform", "state", "lock", "timeout", "force-unlock", "apply"],
+    "description_template": "Terraform apply failing with state lock timeout",
+    "proven_fix": "Force-unlock stale state lock: terraform force-unlock <lock-id>. Add pipeline step to detect and alert on stale locks older than 30 minutes.",
+    "occurrences": 2,
+    "last_seen": "2025-06-21T14:00:00Z",
+    "success_rate": 1.0
+  },
+  {
+    "pattern_id": "PAT-DASHBOARD-STALE",
+    "category": "Data/ETL",
+    "keywords": ["dashboard", "stale", "refresh", "yesterday", "not updating", "tableau", "quicksight"],
+    "description_template": "Dashboard showing stale/yesterday's data",
+    "proven_fix": "Check extract/refresh schedule timing vs ETL completion time. Adjust extract schedule to run after ETL SLA. Verify source table has fresh data.",
+    "occurrences": 2,
+    "last_seen": "2025-06-22T08:00:00Z",
+    "success_rate": 0.9
+  }
+]
