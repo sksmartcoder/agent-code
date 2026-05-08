@@ -1,11 +1,10 @@
 """
 Lambda handler — runs the IT Ticket Agent pipeline.
-Called from the S3 static dashboard via Lambda Function URL.
+All steps emit structured logs visible in CloudWatch and Lambda Test console.
 """
 import os, sys, json, uuid
 from datetime import datetime, timezone
 
-# Lambda /tmp for writable space
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
 os.environ.setdefault("BEDROCK_REGION",     "us-west-2")
 os.environ.setdefault("BEDROCK_MODEL_ID",   "us.amazon.nova-lite-v1:0")
@@ -13,8 +12,14 @@ os.environ.setdefault("CONFIDENCE_THRESHOLD", "80")
 
 sys.path.insert(0, "/var/task")
 
-# ── In-memory stores (no DynamoDB permissions needed) ─────────────────────────
 def _now(): return datetime.now(timezone.utc).isoformat()
+
+def cw_log(step, status, detail="", **kwargs):
+    """Emit a structured log line visible in CloudWatch."""
+    entry = {"step": step, "status": status, "detail": detail,
+             "ts": datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]}
+    entry.update(kwargs)
+    print(json.dumps(entry))
 
 _tickets     = {}
 _resolutions = {}
@@ -136,20 +141,31 @@ def lambda_handler(event, context):
         from tools.models import FixSuggestion
 
         # Step 1: Create ticket
+        cw_log("INTAKE", "START", "Creating ticket", description=description[:80])
         ticket = _create_ticket(description)
+        cw_log("INTAKE", "DONE", "Ticket created", ticket_id=ticket.ticket_id)
 
         # Step 2: Classify
+        cw_log("CLASSIFY", "START", "Calling Amazon Bedrock Nova Lite",
+               model=os.environ["BEDROCK_MODEL_ID"])
         c = classify_ticket(description)
         ticket.category = c["category"]
         ticket.severity  = c["severity"]
         ticket.classification_rationale = c["rationale"]
         ticket.add_status_transition("NEW", "Classification complete")
         _update_ticket(ticket)
+        cw_log("CLASSIFY", "DONE", "Classification complete",
+               category=ticket.category, severity=ticket.severity,
+               rationale=c["rationale"])
 
         # Step 3: Pattern match
+        cw_log("PATTERN_MATCH", "START", f"Scanning patterns for category={ticket.category}")
         patterns = _get_patterns(ticket.category)
         routing  = route_ticket(description, patterns)
         conf = routing["confidence"]
+        cw_log("PATTERN_MATCH", "DONE",
+               f"Result={routing['status']} confidence={conf}%",
+               status=routing["status"], confidence=conf)
 
         # Step 4: Fix
         fix = None
@@ -157,28 +173,42 @@ def lambda_handler(event, context):
             ticket.pattern_id = routing["pattern"].pattern_id
             ticket.add_status_transition("RECURRING", f"Confidence: {conf}%")
             _update_ticket(ticket)
+            cw_log("KNOWLEDGE_BASE", "START", "Fetching proven fix",
+                   pattern_id=routing["pattern"].pattern_id)
             resolution = _get_resolution(routing["pattern"].pattern_id)
             if resolution:
                 fix = FixSuggestion(issue_summary=resolution.description_summary,
                     remediation_steps=resolution.applied_fix, confidence="HIGH")
+                cw_log("KNOWLEDGE_BASE", "DONE", "Proven fix retrieved",
+                       resolution_id=resolution.resolution_id)
 
         if fix is None:
+            cw_log("SUB_AGENT", "START",
+                   f"Delegating to {ticket.category} specialist agent",
+                   agent=ticket.category)
             from agent_core.cicd_agent import CICDAgent
             from agent_core.data_agent import DataETLAgent
             from agent_core.infra_agent import InfraAgent
             from agent_core.access_agent import AccessIAMAgent
             from agent_core.network_agent import NetworkAgent
             agents = {"CI/CD":CICDAgent(),"Data/ETL":DataETLAgent(),
-                      "Infrastructure":InfraAgent(),"Access/IAM":AccessIAMAgent(),"Network":NetworkAgent()}
+                      "Infrastructure":InfraAgent(),"Access/IAM":AccessIAMAgent(),
+                      "Network":NetworkAgent()}
             agent = agents.get(ticket.category)
             if agent:
                 fix = agent.investigate(ticket.ticket_id, ticket.description,
                     ticket.category, ticket.severity)
+                cw_log("SUB_AGENT", "DONE",
+                       f"{ticket.category} agent analysis complete",
+                       agent=ticket.category, confidence=fix.confidence,
+                       issue_summary=fix.issue_summary[:80])
             else:
                 fix = FixSuggestion(issue_summary="Unknown category — manual review required.",
                     remediation_steps="Escalate to on-call engineer.", confidence="LOW_CONFIDENCE")
+                cw_log("SUB_AGENT", "WARN", "Unknown category — no agent found")
 
         # Step 5: Resolve
+        cw_log("RESOLVE", "START", "Logging resolution")
         ticket.fix_suggestion = fix.issue_summary
         ticket.fix_confidence  = fix.confidence
         ticket.resolved_at     = _now()
@@ -186,6 +216,9 @@ def lambda_handler(event, context):
         ticket.add_status_transition("RESOLVED", "Auto-resolved")
         _update_ticket(ticket)
         _log_resolution(ticket, fix.remediation_steps)
+        cw_log("RESOLVE", "DONE", "Ticket resolved",
+               ticket_id=ticket.ticket_id, final_status="RESOLVED",
+               category=ticket.category, severity=ticket.severity)
 
         return {
             "statusCode": 200,

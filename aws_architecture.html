@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT Ticket Agent — AWS Architecture</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh;padding:24px}
+h1{text-align:center;font-size:1.5rem;color:#232f3e;margin-bottom:4px;font-weight:700}
+.subtitle{text-align:center;color:#666;font-size:.9rem;margin-bottom:20px}
+.toggle{display:flex;justify-content:center;gap:0;margin-bottom:28px}
+.toggle button{padding:10px 36px;border:2px solid #232f3e;background:#fff;color:#232f3e;cursor:pointer;font-size:.95rem;font-weight:600;transition:all .2s}
+.toggle button:first-child{border-radius:6px 0 0 6px}
+.toggle button:last-child{border-radius:0 6px 6px 0}
+.toggle button.active{background:#232f3e;color:#ff9900}
+.view{display:none}.view.show{display:block}
+.diagram{max-width:1200px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,.1)}
+.diagram-title{font-size:1.1rem;font-weight:700;color:#232f3e;margin-bottom:6px}
+.diagram-sub{font-size:.82rem;color:#666;margin-bottom:20px}
+
+/* AWS swimlanes */
+.lane{border:2px solid #e0e0e0;border-radius:10px;margin-bottom:16px;overflow:hidden}
+.lane-header{background:#232f3e;color:#ff9900;font-size:.78rem;font-weight:700;padding:6px 14px;text-transform:uppercase;letter-spacing:.08em}
+.lane-body{padding:16px;display:flex;align-items:center;gap:0;flex-wrap:wrap;background:#fafafa}
+.lane-body.col{flex-direction:column;align-items:flex-start;gap:12px}
+
+/* AWS service boxes */
+.svc{display:flex;flex-direction:column;align-items:center;background:#fff;border:1.5px solid #d0d0d0;border-radius:8px;padding:10px 14px;min-width:110px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.svc .svc-icon{font-size:1.8rem;margin-bottom:4px}
+.svc .svc-name{font-size:.75rem;font-weight:700;color:#232f3e}
+.svc .svc-sub{font-size:.65rem;color:#888;margin-top:2px;line-height:1.3}
+.svc.live{border-color:#1a9c3e;background:#f0fff4}
+.svc.live .svc-name{color:#1a9c3e}
+.svc.mock{border-color:#d29922;background:#fffbf0}
+.svc.mock .svc-name{color:#b8860b}
+.svc.ideal{border-color:#0073bb;background:#f0f8ff}
+.svc.ideal .svc-name{color:#0073bb}
+.svc.agent{border-color:#8b5cf6;background:#faf5ff}
+.svc.agent .svc-name{color:#6d28d9}
+
+/* Arrows */
+.arr{display:flex;align-items:center;padding:0 8px;color:#666;font-size:.85rem;flex-shrink:0}
+.arr.down{flex-direction:column;padding:4px 0;width:100%;align-items:center}
+.arr.down::after{content:'▼';color:#0073bb;font-size:1rem}
+.arr::after{content:'▶';color:#0073bb}
+.arr.bi::before{content:'◀';color:#0073bb;margin-right:4px}
+
+/* Groups */
+.group{border:2px dashed #0073bb;border-radius:10px;padding:12px;margin:8px 0;background:#f8fbff}
+.group-label{font-size:.7rem;font-weight:700;color:#0073bb;text-transform:uppercase;margin-bottom:10px;letter-spacing:.06em}
+.row{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.col-group{display:flex;flex-direction:column;gap:10px}
+
+/* Badges */
+.badge{display:inline-block;font-size:.65rem;border-radius:4px;padding:2px 7px;font-weight:600;margin-top:4px}
+.b-live{background:#d4edda;color:#155724}
+.b-mock{background:#fff3cd;color:#856404}
+.b-new{background:#cce5ff;color:#004085}
+
+/* Comparison table */
+.compare{width:100%;border-collapse:collapse;margin-top:8px}
+.compare th{background:#232f3e;color:#ff9900;padding:10px 14px;font-size:.82rem;text-align:left}
+.compare td{padding:9px 14px;font-size:.82rem;border-bottom:1px solid #e0e0e0;vertical-align:top}
+.compare tr:nth-child(even) td{background:#f9f9f9}
+.compare .check{color:#1a9c3e;font-weight:700}
+.compare .cross{color:#c0392b;font-weight:700}
+.compare .warn{color:#d29922;font-weight:700}
+
+/* Note boxes */
+.note{background:#fff8e1;border-left:4px solid #ff9900;padding:10px 14px;border-radius:0 6px 6px 0;font-size:.82rem;color:#555;margin:12px 0}
+.note strong{color:#232f3e}
+
+/* Legend */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0}
+.leg{display:flex;align-items:center;gap:6px;font-size:.75rem;color:#555}
+.leg-dot{width:12px;height:12px;border-radius:3px;border:1.5px solid}
+</style>
+</head>
+<body>
+
+<h1>IT Ticket Intelligence Agent — AWS Architecture</h1>
+<p class="subtitle">Toggle between current implementation and ideal production architecture</p>
+
+<div class="toggle">
+  <button class="active" onclick="show('current',this)">🔧 Current (Hackathon / Lambda)</button>
+  <button onclick="show('ideal',this)">🏗 Ideal Production Architecture</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CURRENT ═══ -->
+<div id="current" class="view show">
+<div class="diagram">
+  <div class="diagram-title">Current Architecture — Hackathon Implementation</div>
+  <div class="diagram-sub">Built with limited IAM permissions. DynamoDB and Glue replaced with in-memory mocks. Lambda used as API backend instead of ECS/Fargate.</div>
+
+  <!-- USER LAYER -->
+  <div class="lane">
+    <div class="lane-header">👤 User / Client Layer</div>
+    <div class="lane-body">
+      <div class="svc live">
+        <div class="svc-icon">🌐</div>
+        <div class="svc-name">S3 Static Site</div>
+        <div class="svc-sub">index.html<br>Web Dashboard</div>
+        <span class="badge b-live">LIVE</span>
+      </div>
+      <div class="arr"></div>
+      <div class="svc live">
+        <div class="svc-icon">λ</div>
+        <div class="svc-name">Lambda Function</div>
+        <div class="svc-sub">it-ticket-agent-api<br>Python 3.12 · 512MB</div>
+        <span class="badge b-live">LIVE</span>
+      </div>
+      <div class="arr"></div>
+      <div class="svc live">
+        <div class="svc-icon">☁</div>
+        <div class="svc-name">AgentCore Runtime</div>
+        <div class="svc-sub">Direct Code Deploy<br>STM Memory</div>
+        <span class="badge b-live">LIVE</span>
+      </div>
+      <div class="arr"></div>
+      <div class="svc">
+        <div class="svc-icon">💻</div>
+        <div class="svc-name">CLI / Terminal</div>
+        <div class="svc-sub">python3 demo.py<br>EC2 Instance</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI LAYER -->
+  <div class="lane">
+    <div class="lane-header">🤖 AI / Agent Layer — Amazon Bedrock</div>
+    <div class="lane-body">
+      <div class="group" style="flex:1">
+        <div class="group-label">Master Agent (Orchestrator)</div>
+        <div class="row">
+          <div class="svc agent">
+            <div class="svc-icon">🎯</div>
+            <div class="svc-name">MasterAgent</div>
+            <div class="svc-sub">Strands SDK<br>Classify→Route→Approve</div>
+          </div>
+          <div class="arr"></div>
+          <div class="svc live">
+            <div class="svc-icon">🧠</div>
+            <div class="svc-name">Bedrock Nova Lite</div>
+            <div class="svc-sub">us.amazon.nova-lite-v1:0<br>Classification + Fix Gen</div>
+            <span class="badge b-live">LIVE</span>
+          </div>
+        </div>
+      </div>
+      <div class="arr"></div>
+      <div class="group" style="flex:2">
+        <div class="group-label">Specialist Sub-Agents (via Agent Message Bus)</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <div class="svc agent"><div class="svc-icon">🔧</div><div class="svc-name">CICDAgent</div><div class="svc-sub">CodePipeline · ECS</div></div>
+          <div class="svc agent"><div class="svc-icon">🗄</div><div class="svc-name">DataETLAgent</div><div class="svc-sub">Glue · RDS · Auto-rerun</div></div>
+          <div class="svc agent"><div class="svc-icon">🖥</div><div class="svc-name">InfraAgent</div><div class="svc-sub">EC2 · EBS · Disk</div></div>
+          <div class="svc agent"><div class="svc-icon">🔑</div><div class="svc-name">AccessIAMAgent</div><div class="svc-sub">Lambda · S3 · Roles</div></div>
+          <div class="svc agent"><div class="svc-icon">🌐</div><div class="svc-name">NetworkAgent</div><div class="svc-sub">VPC · ALB · API GW</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STORAGE LAYER -->
+  <div class="lane">
+    <div class="lane-header">🗃 Storage Layer</div>
+    <div class="lane-body">
+      <div class="svc mock">
+        <div class="svc-icon">🗃</div>
+        <div class="svc-name">DynamoDB (moto)</div>
+        <div class="svc-sub">it_tickets<br>ticket_patterns<br>resolutions</div>
+        <span class="badge b-mock">IN-MEMORY MOCK</span>
+      </div>
+      <div class="arr"></div>
+      <div class="svc live">
+        <div class="svc-icon">🪣</div>
+        <div class="svc-name">S3 Bucket</div>
+        <div class="svc-sub">amzn-hackthon-it-ticket-system<br>Runbooks + Dashboard</div>
+        <span class="badge b-live">LIVE</span>
+      </div>
+      <div class="arr"></div>
+      <div class="svc mock">
+        <div class="svc-icon">🔄</div>
+        <div class="svc-name">AWS Glue (moto)</div>
+        <div class="svc-sub">daily_claims_load<br>etl_pipeline</div>
+        <span class="badge b-mock">IN-MEMORY MOCK</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OBSERVABILITY -->
+  <div class="lane">
+    <div class="lane-header">📊 Observability Layer</div>
+    <div class="lane-body">
+      <div class="svc live"><div class="svc-icon">📋</div><div class="svc-name">Agent Tracer</div><div class="svc-sub">tools/tracer.py<br>JSONL log file</div><span class="badge b-live">LOCAL</span></div>
+      <div class="arr"></div>
+      <div class="svc live"><div class="svc-icon">☁</div><div class="svc-name">CloudWatch Logs</div><div class="svc-sub">/aws/bedrock-agentcore/<br>runtimes/...</div><span class="badge b-live">LIVE</span></div>
+      <div class="arr"></div>
+      <div class="svc live"><div class="svc-icon">🔍</div><div class="svc-name">X-Ray Tracing</div><div class="svc-sub">Configured by<br>agentcore deploy</div><span class="badge b-live">LIVE</span></div>
+      <div class="arr"></div>
+      <div class="svc live"><div class="svc-icon">📈</div><div class="svc-name">GenAI Dashboard</div><div class="svc-sub">CloudWatch<br>GenAI Observability</div><span class="badge b-live">LIVE</span></div>
+    </div>
+  </div>
+
+  <div class="note"><strong>Why Lambda instead of ECS/Fargate?</strong> The EC2 instance role lacked permissions for ECR, ECS, and CloudFormation. Lambda was accessible and required no container build pipeline. The agent logic runs identically — only the hosting layer differs.</div>
+
+  <div class="note"><strong>Why moto instead of real DynamoDB?</strong> No <code>dynamodb:CreateTable</code> or <code>dynamodb:PutItem</code> permissions on the instance role. moto provides a full in-memory DynamoDB implementation with zero AWS permissions required.</div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#d4edda;border-color:#1a9c3e"></div> Live AWS Service</div>
+    <div class="leg"><div class="leg-dot" style="background:#fff3cd;border-color:#d29922"></div> In-memory mock (no permissions)</div>
+    <div class="leg"><div class="leg-dot" style="background:#faf5ff;border-color:#8b5cf6"></div> Agent (runs in Lambda/EC2)</div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ IDEAL ═══ -->
+<div id="ideal" class="view">
+<div class="diagram">
+  <div class="diagram-title">Ideal Production Architecture — Full AWS Integration</div>
+  <div class="diagram-sub">What this solution would look like with complete AWS access. Designed for scale, resilience, and observability.</div>
+
+  <!-- INGESTION -->
+  <div class="lane">
+    <div class="lane-header">📥 Ticket Ingestion Layer</div>
+    <div class="lane-body">
+      <div class="svc ideal"><div class="svc-icon">🌐</div><div class="svc-name">API Gateway</div><div class="svc-sub">REST API<br>Auth: Cognito</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">📧</div><div class="svc-name">SES / SNS</div><div class="svc-sub">Email intake<br>Slack webhook</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">📨</div><div class="svc-name">SQS Queue</div><div class="svc-sub">Ticket intake queue<br>Dead-letter queue</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🔗</div><div class="svc-name">EventBridge</div><div class="svc-sub">CloudWatch alarms<br>→ auto-tickets</div></div>
+    </div>
+  </div>
+
+  <!-- COMPUTE -->
+  <div class="lane">
+    <div class="lane-header">⚙️ Compute Layer — Agent Orchestration</div>
+    <div class="lane-body">
+      <div class="group" style="flex:1">
+        <div class="group-label">AgentCore Runtime (Primary)</div>
+        <div class="col-group">
+          <div class="svc ideal"><div class="svc-icon">☁</div><div class="svc-name">AgentCore Runtime</div><div class="svc-sub">MasterAgent<br>Auto-scaling · STM+LTM</div></div>
+          <div class="svc ideal"><div class="svc-icon">🧠</div><div class="svc-name">AgentCore Memory</div><div class="svc-sub">Long-term memory<br>Cross-session context</div></div>
+        </div>
+      </div>
+      <div class="arr"></div>
+      <div class="group" style="flex:2">
+        <div class="group-label">ECS Fargate — Specialist Sub-Agents</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <div class="svc ideal"><div class="svc-icon">🔧</div><div class="svc-name">CICD Service</div><div class="svc-sub">Fargate task<br>Auto-scale</div></div>
+          <div class="svc ideal"><div class="svc-icon">🗄</div><div class="svc-name">DataETL Service</div><div class="svc-sub">Fargate task<br>Glue integration</div></div>
+          <div class="svc ideal"><div class="svc-icon">🖥</div><div class="svc-name">Infra Service</div><div class="svc-sub">Fargate task<br>EC2/EBS ops</div></div>
+          <div class="svc ideal"><div class="svc-icon">🔑</div><div class="svc-name">IAM Service</div><div class="svc-sub">Fargate task<br>Policy analysis</div></div>
+          <div class="svc ideal"><div class="svc-icon">🌐</div><div class="svc-name">Network Service</div><div class="svc-sub">Fargate task<br>VPC analysis</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI -->
+  <div class="lane">
+    <div class="lane-header">🤖 AI Layer — Amazon Bedrock</div>
+    <div class="lane-body">
+      <div class="svc ideal"><div class="svc-icon">🧠</div><div class="svc-name">Bedrock Claude 3.5</div><div class="svc-sub">Primary LLM<br>Classification + Fix</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">📚</div><div class="svc-name">Bedrock Knowledge Base</div><div class="svc-sub">OpenSearch Serverless<br>RAG on runbooks</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🤖</div><div class="svc-name">Bedrock Agents</div><div class="svc-sub">Action groups<br>Tool calling</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🛡</div><div class="svc-name">Bedrock Guardrails</div><div class="svc-sub">Content filtering<br>PII protection</div></div>
+    </div>
+  </div>
+
+  <!-- STORAGE -->
+  <div class="lane">
+    <div class="lane-header">🗃 Storage Layer</div>
+    <div class="lane-body">
+      <div class="svc ideal"><div class="svc-icon">��</div><div class="svc-name">DynamoDB</div><div class="svc-sub">Tickets · Patterns<br>Resolutions · GSI</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🪣</div><div class="svc-name">S3</div><div class="svc-sub">Runbooks · Artifacts<br>Audit logs</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🔍</div><div class="svc-name">OpenSearch</div><div class="svc-sub">Full-text ticket search<br>Pattern analytics</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">⚡</div><div class="svc-name">ElastiCache</div><div class="svc-sub">Pattern cache<br>Session state</div></div>
+    </div>
+  </div>
+
+  <!-- INTEGRATION -->
+  <div class="lane">
+    <div class="lane-header">🔗 AWS Service Integration (Auto-Remediation)</div>
+    <div class="lane-body">
+      <div class="svc ideal"><div class="svc-icon">🔄</div><div class="svc-name">AWS Glue</div><div class="svc-sub">ETL job restart<br>Run monitoring</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🚀</div><div class="svc-name">CodePipeline</div><div class="svc-sub">Pipeline retry<br>Build triggers</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🖥</div><div class="svc-name">Systems Manager</div><div class="svc-sub">Run commands<br>Patch management</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🔐</div><div class="svc-name">IAM</div><div class="svc-sub">Policy simulation<br>Role analysis</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🌐</div><div class="svc-name">VPC / EC2</div><div class="svc-sub">SG rule analysis<br>Network diagnostics</div></div>
+    </div>
+  </div>
+
+  <!-- OBSERVABILITY -->
+  <div class="lane">
+    <div class="lane-header">📊 Observability & Security</div>
+    <div class="lane-body">
+      <div class="svc ideal"><div class="svc-icon">📊</div><div class="svc-name">CloudWatch</div><div class="svc-sub">Metrics · Logs<br>Dashboards · Alarms</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🔍</div><div class="svc-name">X-Ray</div><div class="svc-sub">Distributed tracing<br>Service map</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🛡</div><div class="svc-name">CloudTrail</div><div class="svc-sub">API audit log<br>Compliance</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🔒</div><div class="svc-name">Secrets Manager</div><div class="svc-sub">API keys<br>DB credentials</div></div>
+      <div class="arr"></div>
+      <div class="svc ideal"><div class="svc-icon">🌐</div><div class="svc-name">WAF + Shield</div><div class="svc-sub">API protection<br>DDoS mitigation</div></div>
+    </div>
+  </div>
+
+  <!-- COMPARISON TABLE -->
+  <div style="margin-top:24px">
+    <div style="font-size:.9rem;font-weight:700;color:#232f3e;margin-bottom:10px">Current vs Ideal — Comparison</div>
+    <table class="compare">
+      <tr><th>Component</th><th>Current (Hackathon)</th><th>Ideal (Production)</th><th>Why Different</th></tr>
+      <tr><td>Compute</td><td><span class="warn">⚠</span> Lambda (128s timeout)</td><td><span class="check">✓</span> ECS Fargate + AgentCore</td><td>Lambda cold start, 15min limit</td></tr>
+      <tr><td>Database</td><td><span class="cross">✗</span> moto in-memory mock</td><td><span class="check">✓</span> DynamoDB (real)</td><td>No DynamoDB permissions on EC2 role</td></tr>
+      <tr><td>ETL Integration</td><td><span class="cross">✗</span> moto Glue mock</td><td><span class="check">✓</span> Real AWS Glue API</td><td>No Glue permissions</td></tr>
+      <tr><td>LLM</td><td><span class="warn">⚠</span> Nova Lite (fallback)</td><td><span class="check">✓</span> Claude 3.5 Sonnet</td><td>Claude models legacy/inactive in account</td></tr>
+      <tr><td>Knowledge Base</td><td><span class="warn">⚠</span> S3 markdown files</td><td><span class="check">✓</span> Bedrock KB + RAG</td><td>No OpenSearch permissions</td></tr>
+      <tr><td>Ticket Intake</td><td><span class="warn">⚠</span> CLI / S3 form only</td><td><span class="check">✓</span> API GW + SQS + Email</td><td>No API Gateway permissions</td></tr>
+      <tr><td>Auto-Remediation</td><td><span class="warn">⚠</span> Glue only (mocked)</td><td><span class="check">✓</span> Glue + SSM + CodePipeline</td><td>No service permissions</td></tr>
+      <tr><td>Persistence</td><td><span class="cross">✗</span> Lost on restart</td><td><span class="check">✓</span> DynamoDB + LTM Memory</td><td>No DynamoDB permissions</td></tr>
+      <tr><td>Security</td><td><span class="warn">⚠</span> IAM role only</td><td><span class="check">✓</span> Cognito + WAF + Secrets Mgr</td><td>Workshop account restrictions</td></tr>
+      <tr><td>Observability</td><td><span class="check">✓</span> CloudWatch + X-Ray</td><td><span class="check">✓</span> CloudWatch + X-Ray + CloudTrail</td><td>Already working</td></tr>
+    </table>
+  </div>
+
+  <div class="note" style="margin-top:16px"><strong>Key insight:</strong> The agent logic, multi-agent architecture, and AI pipeline are production-ready. The gaps are purely infrastructure permissions — DynamoDB, ECS, Glue, and API Gateway. With a proper IAM role, this deploys to production in under an hour using the existing CloudFormation template.</div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#f0f8ff;border-color:#0073bb"></div> Ideal production service</div>
+    <div class="leg"><div class="leg-dot" style="background:#d4edda;border-color:#1a9c3e"></div> Currently live</div>
+    <div class="leg"><div class="leg-dot" style="background:#fff3cd;border-color:#d29922"></div> Mocked due to permissions</div>
+  </div>
+</div>
+</div>
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('show'));
+  document.querySelectorAll('.toggle button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('show');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

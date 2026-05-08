@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-AgentCore entrypoint — wraps MasterAgent with BedrockAgentCoreApp.
-Uses lightweight in-memory store (no moto) to stay within 30s cold-start.
-Real Bedrock Nova Lite for all AI calls.
+AgentCore entrypoint — minimal cold start, all work done in handler.
 """
 import os, sys, json, uuid
 from datetime import datetime, timezone
@@ -17,159 +15,135 @@ sys.path.insert(0, os.path.dirname(__file__))
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 app = BedrockAgentCoreApp()
 
-# ── In-memory stores (replaces DynamoDB/S3/Glue for AgentCore runtime) ────────
-_tickets     = {}
-_patterns    = {}
-_resolutions = {}
-_runbooks    = {}
-_glue_jobs   = {}
-
-# ── Real Bedrock client ───────────────────────────────────────────────────────
-import boto3
-_bedrock = boto3.client("bedrock-runtime", region_name=os.environ["BEDROCK_REGION"])
-
-# ── Load runbooks from knowledge_base/ ───────────────────────────────────────
-_kb_dir = os.path.join(os.path.dirname(__file__), "knowledge_base")
-if os.path.isdir(_kb_dir):
-    for _f in os.listdir(_kb_dir):
-        if _f.endswith(".md"):
-            with open(os.path.join(_kb_dir, _f)) as _fh:
-                _runbooks[_f.replace("_runbook.md", "").replace("_", "/")] = _fh.read()
-
-# ── Seed patterns + resolutions ───────────────────────────────────────────────
 def _now(): return datetime.now(timezone.utc).isoformat()
 
-_patterns = {
-    "pat-cicd-001":   {"pattern_id":"pat-cicd-001","category":"CI/CD","signature":"ECS OOM","resolution_id":"res-cicd-001","keywords":["codepipeline","ecs","task","memory","killed","oom","deploy","failed"],"occurrence_count":4,"last_seen":_now()},
-    "pat-data-001":   {"pattern_id":"pat-data-001","category":"Data/ETL","signature":"Glue timeout","resolution_id":"res-data-001","keywords":["glue","job","failed","connection","timeout","jdbc","daily","load","claims"],"occurrence_count":3,"last_seen":_now()},
-    "pat-infra-001":  {"pattern_id":"pat-infra-001","category":"Infrastructure","signature":"EC2 disk full","resolution_id":"res-infra-001","keywords":["ec2","instance","disk","full","unreachable","storage","ebs","volume"],"occurrence_count":5,"last_seen":_now()},
-    "pat-access-001": {"pattern_id":"pat-access-001","category":"Access/IAM","signature":"Lambda S3 denied","resolution_id":"res-access-001","keywords":["lambda","function","s3","bucket","write","access","denied","permission","role"],"occurrence_count":3,"last_seen":_now()},
-    "pat-network-001":{"pattern_id":"pat-network-001","category":"Network","signature":"API Gateway 503","resolution_id":"res-network-001","keywords":["api","gateway","503","backend","health","security","group","inbound","alb"],"occurrence_count":4,"last_seen":_now()},
+# Pre-seeded patterns and resolutions (no DB needed)
+_PATTERNS = {
+    "pat-cicd-001":   {"pattern_id":"pat-cicd-001","category":"CI/CD","resolution_id":"res-cicd-001","keywords":["codepipeline","ecs","task","memory","killed","oom","deploy","failed"],"occurrence_count":4,"last_seen":_now(),"signature":"ECS OOM"},
+    "pat-data-001":   {"pattern_id":"pat-data-001","category":"Data/ETL","resolution_id":"res-data-001","keywords":["glue","job","failed","connection","timeout","jdbc","daily","load","claims"],"occurrence_count":3,"last_seen":_now(),"signature":"Glue timeout"},
+    "pat-infra-001":  {"pattern_id":"pat-infra-001","category":"Infrastructure","resolution_id":"res-infra-001","keywords":["ec2","instance","disk","full","unreachable","storage","ebs","volume"],"occurrence_count":5,"last_seen":_now(),"signature":"EC2 disk full"},
+    "pat-access-001": {"pattern_id":"pat-access-001","category":"Access/IAM","resolution_id":"res-access-001","keywords":["lambda","function","s3","bucket","write","access","denied","permission","role"],"occurrence_count":3,"last_seen":_now(),"signature":"Lambda S3 denied"},
+    "pat-network-001":{"pattern_id":"pat-network-001","category":"Network","resolution_id":"res-network-001","keywords":["api","gateway","503","backend","health","security","group","inbound","alb"],"occurrence_count":4,"last_seen":_now(),"signature":"API Gateway 503"},
 }
-_resolutions = {
-    "res-cicd-001":   {"resolution_id":"res-cicd-001","ticket_id":"h1","pattern_id":"pat-cicd-001","category":"CI/CD","severity":"P2","description_summary":"ECS OOM during deploy","applied_fix":"1. Increase ECS memory to 1024MB.\n2. Create new task revision.\n3. Update service.\n4. Re-run pipeline.","created_at":_now()},
-    "res-data-001":   {"resolution_id":"res-data-001","ticket_id":"h2","pattern_id":"pat-data-001","category":"Data/ETL","severity":"P2","description_summary":"Glue JDBC timeout","applied_fix":"1. Increase JDBC timeout to 120s.\n2. Add retry logic.\n3. Increase DPU.","created_at":_now()},
-    "res-infra-001":  {"resolution_id":"res-infra-001","ticket_id":"h3","pattern_id":"pat-infra-001","category":"Infrastructure","severity":"P1","description_summary":"EC2 disk full","applied_fix":"1. Clean /tmp.\n2. Rotate logs.\n3. Extend EBS volume.","created_at":_now()},
-    "res-access-001": {"resolution_id":"res-access-001","ticket_id":"h4","pattern_id":"pat-access-001","category":"Access/IAM","severity":"P3","description_summary":"Lambda S3 denied","applied_fix":"1. Add s3:PutObject to Lambda execution role.","created_at":_now()},
-    "res-network-001":{"resolution_id":"res-network-001","ticket_id":"h5","pattern_id":"pat-network-001","category":"Network","severity":"P1","description_summary":"API Gateway 503","applied_fix":"1. Add SG inbound rule TCP 8080 from ALB.","created_at":_now()},
+_RESOLUTIONS = {
+    "res-cicd-001":   {"resolution_id":"res-cicd-001","ticket_id":"h1","pattern_id":"pat-cicd-001","category":"CI/CD","severity":"P2","description_summary":"ECS task OOM killed during CodePipeline deployment","applied_fix":"1. Open ECS task definition.\n2. Increase memory from 512MB to 1024MB.\n3. Create new task revision.\n4. Update ECS service.\n5. Re-run CodePipeline.","created_at":_now()},
+    "res-data-001":   {"resolution_id":"res-data-001","ticket_id":"h2","pattern_id":"pat-data-001","category":"Data/ETL","severity":"P2","description_summary":"Glue job JDBC connection timeout","applied_fix":"1. Increase JDBC timeout to 120s.\n2. Add retry: maxRetries=3.\n3. Increase DPU from 2 to 4.\n4. Re-run job.","created_at":_now()},
+    "res-infra-001":  {"resolution_id":"res-infra-001","ticket_id":"h3","pattern_id":"pat-infra-001","category":"Infrastructure","severity":"P1","description_summary":"EC2 instance disk full","applied_fix":"1. SSH in: sudo du -sh /* | sort -rh | head -20\n2. Clean /tmp: sudo rm -rf /tmp/*\n3. Extend EBS volume.\n4. Grow filesystem.","created_at":_now()},
+    "res-access-001": {"resolution_id":"res-access-001","ticket_id":"h4","pattern_id":"pat-access-001","category":"Access/IAM","severity":"P3","description_summary":"Lambda missing S3 write permission","applied_fix":"1. Open IAM Console, find Lambda execution role.\n2. Add s3:PutObject on arn:aws:s3:::prod-reports/*\n3. Save and re-invoke Lambda.","created_at":_now()},
+    "res-network-001":{"resolution_id":"res-network-001","ticket_id":"h5","pattern_id":"pat-network-001","category":"Network","severity":"P1","description_summary":"API Gateway 503 missing security group rule","applied_fix":"1. Open EC2 > Security Groups.\n2. Add inbound rule: TCP 8080 from ALB SG.\n3. Save and verify health checks.","created_at":_now()},
 }
-_glue_jobs = {"daily_claims_load":"FAILED","etl_pipeline":"FAILED","claims_transform":"FAILED"}
+_tickets = {}
 
-# ── Patch ticket_store to use in-memory dicts ─────────────────────────────────
-import tools.ticket_store as _ts
-import tools.models as _m
-import config as _cfg
-import re as _re
-
-_cfg.CONFIDENCE_THRESHOLD = 80
-
-def _mem_create_ticket(description, intake_channel="CLI", dynamodb=None):
-    _ts.validate_description(description)
-    t = _m.Ticket(description=description, intake_channel=intake_channel)
-    t.add_status_transition("OPEN", "Ticket created")
-    _tickets[t.ticket_id] = t.to_dict()
-    return t
-
-def _mem_get_ticket(ticket_id, dynamodb=None):
-    d = _tickets.get(ticket_id)
-    return _m.Ticket.from_dict(d) if d else None
-
-def _mem_update_ticket(ticket, dynamodb=None):
-    _tickets[ticket.ticket_id] = ticket.to_dict()
-
-def _mem_get_patterns(category, dynamodb=None):
-    return [_m.TicketPattern.from_dict(p) for p in _patterns.values() if p["category"] == category]
-
-def _mem_get_resolution(pattern_id, dynamodb=None):
-    pat = _patterns.get(pattern_id)
-    if not pat: return None
-    res = _resolutions.get(pat.get("resolution_id"))
-    return _m.Resolution.from_dict(res) if res else None
-
-def _mem_log_resolution(ticket, applied_fix, dynamodb=None):
-    res = _m.Resolution(ticket_id=ticket.ticket_id, category=ticket.category,
-        severity=ticket.severity, description_summary=ticket.description[:500],
-        applied_fix=applied_fix, pattern_id=ticket.pattern_id)
-    _resolutions[res.resolution_id] = res.to_dict()
-    if ticket.pattern_id and ticket.pattern_id in _patterns:
-        _patterns[ticket.pattern_id]["occurrence_count"] += 1
-    elif ticket.pattern_id is None:
-        words = list(set(_re.findall(r"\b[a-zA-Z]{5,}\b", ticket.description.lower())))[:20]
-        pid = str(uuid.uuid4())
-        _patterns[pid] = {"pattern_id":pid,"category":ticket.category,"signature":ticket.description[:200],
-            "keywords":words,"resolution_id":res.resolution_id,"occurrence_count":1,"last_seen":_now()}
-    return res
-
-_ts.create_ticket              = _mem_create_ticket
-_ts.get_ticket                 = _mem_get_ticket
-_ts.update_ticket              = _mem_update_ticket
-_ts.get_patterns_by_category   = _mem_get_patterns
-_ts.get_resolution_by_pattern  = _mem_get_resolution
-_ts.log_resolution             = _mem_log_resolution
-
-# ── Patch knowledge_base to use in-memory runbooks ────────────────────────────
-import tools.knowledge_base as _kb
-_RUNBOOK_MAP = {"CI/CD":"CI/CD","Data/ETL":"Data/ETL","Infrastructure":"Infrastructure","Access/IAM":"Access/IAM","Network":"Network"}
-def _mem_get_runbook(category, s3_client=None):
-    for k, v in _runbooks.items():
-        if category.lower().replace("/","").replace(" ","") in k.lower().replace("/","").replace(" ",""):
-            return v
-    return None
-_kb.get_runbook = _mem_get_runbook
-
-# ── Patch Bedrock calls to use real client ────────────────────────────────────
-import tools.classifier as _clf
-import agent_core.base_agent as _ba
-
-def _nova_clf(prompt):
-    body = json.dumps({"system":[{"text":_clf.SYSTEM_PROMPT}],
-        "messages":[{"role":"user","content":[{"text":prompt}]}],
-        "inferenceConfig":{"maxTokens":256,"temperature":0.1}})
-    r = _bedrock.invoke_model(modelId=os.environ["BEDROCK_MODEL_ID"],
-        body=body, contentType="application/json", accept="application/json")
-    return json.loads(r["body"].read())["output"]["message"]["content"][0]["text"]
-
-def _nova_ba(system_prompt, prompt):
-    body = json.dumps({"system":[{"text":system_prompt}],
-        "messages":[{"role":"user","content":[{"text":prompt}]}],
-        "inferenceConfig":{"maxTokens":1024,"temperature":0.2}})
-    r = _bedrock.invoke_model(modelId=os.environ["BEDROCK_MODEL_ID"],
-        body=body, contentType="application/json", accept="application/json")
-    return json.loads(r["body"].read())["output"]["message"]["content"][0]["text"]
-
-_clf._call_nova = _nova_clf
-_ba._call_nova  = _nova_ba
-
-# ── Patch data_agent Glue calls to use in-memory ─────────────────────────────
-import agent_core.data_agent as _da
-
-def _mem_get_job_status(job_name):
-    return _glue_jobs.get(job_name, "NOT_FOUND")
-
-def _mem_rerun_job(job_name):
-    if job_name in _glue_jobs:
-        _glue_jobs[job_name] = "RUNNING"
-        return str(uuid.uuid4())[:8], None
-    return None, f"Job {job_name} not found"
-
-_da._get_job_status = _mem_get_job_status
-_da._rerun_glue_job = _mem_rerun_job
-
-
-# ── AgentCore entrypoint ──────────────────────────────────────────────────────
 @app.entrypoint
 def handle(payload: dict) -> dict:
+    import boto3, json, re
+    from tools.classifier import classify_ticket
+    from tools.pattern_matcher import route_ticket
+    from tools.models import Ticket, TicketPattern, Resolution, FixSuggestion
+    from tools.ticket_store import validate_description
+
     description = payload.get("prompt", "").strip()
     if not description:
-        return {"error": "prompt is required", "final_status": "REJECTED"}
+        return {"error": "prompt required", "final_status": "REJECTED"}
 
-    from agent_core.master_agent import MasterAgent
-    from unittest.mock import patch
-    with patch("builtins.input", return_value="approve"):
-        result = MasterAgent().process(description)
+    print(json.dumps({"step":"INTAKE","status":"START","description":description[:80]}))
 
-    return result
+    validate_description(description)
+    ticket = Ticket(description=description, intake_channel="AgentCore")
+    ticket.add_status_transition("OPEN", "Ticket created")
+    _tickets[ticket.ticket_id] = ticket.to_dict()
+    print(json.dumps({"step":"INTAKE","status":"DONE","ticket_id":ticket.ticket_id}))
 
+    # Classify
+    print(json.dumps({"step":"CLASSIFY","status":"START","model":os.environ["BEDROCK_MODEL_ID"]}))
+    bedrock = boto3.client("bedrock-runtime", region_name=os.environ["BEDROCK_REGION"])
+
+    from tools.classifier import SYSTEM_PROMPT, _parse
+    body = json.dumps({"system":[{"text":SYSTEM_PROMPT}],
+        "messages":[{"role":"user","content":[{"text":f"Classify this IT ticket:\n\n{description}"}]}],
+        "inferenceConfig":{"maxTokens":256,"temperature":0.1}})
+    r = bedrock.invoke_model(modelId=os.environ["BEDROCK_MODEL_ID"],
+        body=body, contentType="application/json", accept="application/json")
+    clf_text = json.loads(r["body"].read())["output"]["message"]["content"][0]["text"]
+    c = _parse(clf_text)
+
+    ticket.category = c["category"]
+    ticket.severity  = c["severity"]
+    ticket.classification_rationale = c["rationale"]
+    ticket.add_status_transition("NEW", "Classification complete")
+    _tickets[ticket.ticket_id] = ticket.to_dict()
+    print(json.dumps({"step":"CLASSIFY","status":"DONE","category":ticket.category,"severity":ticket.severity}))
+
+    # Pattern match
+    print(json.dumps({"step":"PATTERN_MATCH","status":"START","category":ticket.category}))
+    patterns = [TicketPattern.from_dict(p) for p in _PATTERNS.values() if p["category"] == ticket.category]
+    routing = route_ticket(description, patterns)
+    conf = routing["confidence"]
+    print(json.dumps({"step":"PATTERN_MATCH","status":"DONE","result":routing["status"],"confidence":conf}))
+
+    # Fix
+    fix = None
+    if routing["status"] == "RECURRING":
+        ticket.pattern_id = routing["pattern"].pattern_id
+        ticket.add_status_transition("RECURRING", f"Confidence: {conf}%")
+        _tickets[ticket.ticket_id] = ticket.to_dict()
+        res_data = _RESOLUTIONS.get(_PATTERNS.get(ticket.pattern_id, {}).get("resolution_id"))
+        if res_data:
+            fix = FixSuggestion(issue_summary=res_data["description_summary"],
+                remediation_steps=res_data["applied_fix"], confidence="HIGH")
+            print(json.dumps({"step":"KNOWLEDGE_BASE","status":"DONE","resolution_id":res_data["resolution_id"]}))
+
+    if fix is None:
+        print(json.dumps({"step":"SUB_AGENT","status":"START","agent":ticket.category}))
+        from agent_core.cicd_agent import CICDAgent
+        from agent_core.data_agent import DataETLAgent
+        from agent_core.infra_agent import InfraAgent
+        from agent_core.access_agent import AccessIAMAgent
+        from agent_core.network_agent import NetworkAgent
+        import agent_core.base_agent as _ba
+
+        def _nova(system_prompt, prompt):
+            b = json.dumps({"system":[{"text":system_prompt}],
+                "messages":[{"role":"user","content":[{"text":prompt}]}],
+                "inferenceConfig":{"maxTokens":1024,"temperature":0.2}})
+            rr = bedrock.invoke_model(modelId=os.environ["BEDROCK_MODEL_ID"],
+                body=b, contentType="application/json", accept="application/json")
+            return json.loads(rr["body"].read())["output"]["message"]["content"][0]["text"]
+        _ba._call_nova = _nova
+
+        agents = {"CI/CD":CICDAgent(),"Data/ETL":DataETLAgent(),
+                  "Infrastructure":InfraAgent(),"Access/IAM":AccessIAMAgent(),"Network":NetworkAgent()}
+        agent = agents.get(ticket.category)
+        if agent:
+            fix = agent.investigate(ticket.ticket_id, ticket.description,
+                ticket.category, ticket.severity)
+        else:
+            fix = FixSuggestion(issue_summary="Unknown category.",
+                remediation_steps="Escalate to on-call.", confidence="LOW_CONFIDENCE")
+        print(json.dumps({"step":"SUB_AGENT","status":"DONE","confidence":fix.confidence}))
+
+    # Resolve
+    ticket.fix_suggestion = fix.issue_summary
+    ticket.fix_confidence  = fix.confidence
+    ticket.resolved_at     = _now()
+    ticket.resolved_by     = "agentcore"
+    ticket.add_status_transition("RESOLVED", "Auto-resolved by AgentCore")
+    _tickets[ticket.ticket_id] = ticket.to_dict()
+    print(json.dumps({"step":"RESOLVE","status":"DONE","ticket_id":ticket.ticket_id,"final_status":"RESOLVED"}))
+
+    return {
+        "ticket_id":          ticket.ticket_id,
+        "category":           ticket.category,
+        "severity":           ticket.severity,
+        "rationale":          ticket.classification_rationale,
+        "pattern_status":     routing["status"],
+        "pattern_confidence": conf,
+        "issue_summary":      fix.issue_summary,
+        "remediation_steps":  fix.remediation_steps,
+        "confidence":         fix.confidence,
+        "aws_resources":      fix.aws_resources,
+        "final_status":       "RESOLVED",
+    }
 
 if __name__ == "__main__":
     app.run()

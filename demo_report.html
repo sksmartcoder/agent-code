@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IT Ticket Agent — Demo Report</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;display:flex;min-height:100vh}
+.sidebar{width:220px;min-width:220px;background:#1a1a2e;padding:20px 0;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar-title{color:#ff9900;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:0 16px 12px}
+.nav-item{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;color:#ccc;text-decoration:none;font-size:.82rem;font-weight:500;transition:background .15s;gap:6px}
+.nav-item:hover{background:#2d3748;color:#fff}
+.nav-status{font-size:.9rem}
+.sidebar-summary{margin-top:20px;padding:12px 16px;border-top:1px solid #2d3748}
+.sidebar-summary .s-label{color:#888;font-size:.72rem;text-transform:uppercase}
+.sidebar-summary .s-val{color:#ff9900;font-size:1.4rem;font-weight:700}
+.main{flex:1;padding:24px;overflow-y:auto}
+.page-header{background:#1a1a2e;color:#fff;border-radius:10px;padding:20px 28px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between}
+.page-header h1{font-size:1.3rem;color:#ff9900}
+.page-header .meta{font-size:.8rem;color:#888;text-align:right}
+.summary-row{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+.summary-card{background:#fff;border-radius:8px;padding:16px 20px;flex:1;min-width:140px;box-shadow:0 1px 4px rgba(0,0,0,.08);text-align:center}
+.summary-card .sv{font-size:2rem;font-weight:700}
+.summary-card .sl{font-size:.75rem;color:#888;margin-top:4px}
+.card{background:#fff;border-radius:10px;margin-bottom:20px;box-shadow:0 1px 6px rgba(0,0,0,.08);overflow:hidden}
+.card-header{padding:16px 20px;background:#fafbfc;border-bottom:1px solid #eee}
+.card-title{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.agent-icon{font-size:1.3rem}
+.agent-name{font-size:1rem;font-weight:700}
+.status-badge{border-radius:4px;padding:2px 10px;font-size:.72rem;font-weight:700}
+.duration{color:#888;font-size:.75rem;margin-left:auto}
+.ticket-desc{font-size:.85rem;color:#555;font-style:italic}
+.card-body{padding:16px 20px}
+.meta-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f0f0f0}
+.meta-item{min-width:100px}
+.meta-label{font-size:.68rem;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.meta-value{font-size:.9rem;font-weight:700}
+.conf-bar-wrap{display:flex;align-items:center;gap:8px}
+.conf-bar{height:8px;background:#eee;border-radius:4px;width:80px;overflow:hidden}
+.conf-fill{height:100%;border-radius:4px;transition:width .8s}
+.two-col{display:grid;grid-template-columns:220px 1fr;gap:20px}
+.section-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:8px}
+.trace{display:flex;flex-direction:column;gap:6px}
+.trace-step{display:flex;align-items:flex-start;gap:8px}
+.trace-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0;border:2px solid}
+.trace-body{display:flex;flex-direction:column}
+.trace-name{font-size:.78rem;font-weight:700}
+.trace-detail{font-size:.7rem;color:#888}
+.issue-text{font-size:.85rem;color:#333;line-height:1.5;background:#f8f9fa;border-radius:6px;padding:10px;margin-bottom:8px}
+.steps{display:flex;flex-direction:column;gap:4px}
+.step-line{font-size:.8rem;color:#444;padding:3px 0;border-bottom:1px solid #f5f5f5;line-height:1.4}
+.res-title{font-size:.72rem;font-weight:700;text-transform:uppercase;color:#888;margin:10px 0 4px}
+.res-item{font-size:.72rem;color:#1a73e8;font-family:monospace;padding:2px 0}
+@media(max-width:700px){.sidebar{display:none}.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-title">🎫 Agent Demo Report</div>
+  <a href="#cicd" class="nav-item" style="border-left:3px solid #1a73e8">🔧 CI/CD Agent<span class="nav-status" style="color:#1d8348">✓</span></a><a href="#data" class="nav-item" style="border-left:3px solid #d29922">🗄 Data/ETL Agent<span class="nav-status" style="color:#1d8348">✓</span></a><a href="#infra" class="nav-item" style="border-left:3px solid #1d8348">🖥 Infrastructure Agent<span class="nav-status" style="color:#1d8348">✓</span></a><a href="#access" class="nav-item" style="border-left:3px solid #d35400">🔑 Access/IAM Agent<span class="nav-status" style="color:#1d8348">✓</span></a><a href="#network" class="nav-item" style="border-left:3px solid #c0392b">🌐 Network Agent<span class="nav-status" style="color:#1d8348">✓</span></a>
+  <div class="sidebar-summary">
+    <div class="s-label">Scenarios Passed</div>
+    <div class="s-val">5/5</div>
+    <div class="s-label" style="margin-top:8px">Generated</div>
+    <div style="color:#ccc;font-size:.72rem">2026-05-08 02:20 UTC</div>
+  </div>
+</div>
+<div class="main">
+  <div class="page-header">
+    <div>
+      <h1>🎫 IT Ticket Intelligence Agent</h1>
+      <div style="color:#888;font-size:.82rem;margin-top:4px">Demo Execution Report · Amazon Bedrock Nova Lite · Strands SDK</div>
+    </div>
+    <div class="meta">
+      <div style="color:#ff9900;font-size:1.2rem;font-weight:700">5/5 Passed</div>
+      <div>2026-05-08 02:20 UTC</div>
+      <div>Region: us-west-2</div>
+    </div>
+  </div>
+
+  <div class="summary-row">
+    <div class="summary-card">
+      <div class="sv" style="color:#1d8348">5</div>
+      <div class="sl">Scenarios Passed</div>
+    </div>
+    <div class="summary-card">
+      <div class="sv" style="color:#c0392b">0</div>
+      <div class="sl">Failed</div>
+    </div>
+    <div class="summary-card">
+      <div class="sv" style="color:#1a73e8">5</div>
+      <div class="sl">Total Agents Tested</div>
+    </div>
+    <div class="summary-card">
+      <div class="sv" style="color:#ff9900">2423ms</div>
+      <div class="sl">Avg Response Time</div>
+    </div>
+  </div>
+
+  
+        <div class="card" id="cicd">
+          <div class="card-header" style="border-left:5px solid #1a73e8">
+            <div class="card-title">
+              <span class="agent-icon">🔧</span>
+              <span class="agent-name" style="color:#1a73e8">CI/CD Agent</span>
+              <span class="status-badge" style="background:#1d834820;color:#1d8348;border:1px solid #1d8348">✓ PASSED</span>
+              <span class="duration">3345ms</span>
+            </div>
+            <div class="ticket-desc">"CodePipeline deploy failed — ECS task OOM killed"</div>
+          </div>
+          <div class="card-body">
+            <div class="meta-row">
+              <div class="meta-item">
+                <div class="meta-label">Category</div>
+                <div class="meta-value" style="color:#1a73e8">CI/CD</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Severity</div>
+                <div class="meta-value" style="color:#d29922">P2</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Pattern</div>
+                <div class="meta-value" style="color:#1d8348">RECURRING</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Confidence</div>
+                <div class="conf-bar-wrap">
+                  <div class="conf-bar"><div class="conf-fill" style="width:88%;background:#1d8348"></div></div>
+                  <span style="color:#1d8348;font-weight:700">88%</span>
+                </div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">AI Confidence</div>
+                <div class="meta-value" style="color:#1d8348">
+                  ✓ HIGH
+                </div>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div class="left-col">
+                <div class="section-title">🔄 Agent Trace</div>
+                <div class="trace">
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1a73e8;border-color:#1a73e8">📥</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1a73e8">Intake</span>
+                <span class="trace-detail">Ticket created</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🤖</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Classify</span>
+                <span class="trace-detail">Bedrock Nova → CI/CD / P2</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">🔍</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Pattern Match</span>
+                <span class="trace-detail">RECURRING · 88% confidence</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1a73e8;border-color:#1a73e8">⚡</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1a73e8">Sub-Agent</span>
+                <span class="trace-detail">CI/CD Agent investigated</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">✅</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Resolve</span>
+                <span class="trace-detail">Status: RESOLVED</span>
+              </div>
+            </div></div>
+              </div>
+              <div class="right-col">
+                <div class="section-title">📋 Issue Summary</div>
+                <div class="issue-text">ECS task OOM killed during CodePipeline deployment</div>
+                <div class="section-title" style="margin-top:12px">🛠 Remediation Steps</div>
+                <div class="steps"><div class="step-line">› 1. Open ECS task definition.</div><div class="step-line">› 2. Increase memory from 512MB to 1024MB.</div><div class="step-line">› 3. Create new task revision.</div><div class="step-line">› 4. Update ECS service.</div><div class="step-line">› 5. Re-run CodePipeline.</div></div>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card" id="data">
+          <div class="card-header" style="border-left:5px solid #d29922">
+            <div class="card-title">
+              <span class="agent-icon">🗄</span>
+              <span class="agent-name" style="color:#d29922">Data/ETL Agent</span>
+              <span class="status-badge" style="background:#1d834820;color:#1d8348;border:1px solid #1d8348">✓ PASSED</span>
+              <span class="duration">3342ms</span>
+            </div>
+            <div class="ticket-desc">"Glue job daily_claims_load failed with connection timeout"</div>
+          </div>
+          <div class="card-body">
+            <div class="meta-row">
+              <div class="meta-item">
+                <div class="meta-label">Category</div>
+                <div class="meta-value" style="color:#d29922">Data/ETL</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Severity</div>
+                <div class="meta-value" style="color:#d29922">P2</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Pattern</div>
+                <div class="meta-value" style="color:#7d3c98">NEW</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Confidence</div>
+                <div class="conf-bar-wrap">
+                  <div class="conf-bar"><div class="conf-fill" style="width:53%;background:#d29922"></div></div>
+                  <span style="color:#d29922;font-weight:700">53%</span>
+                </div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">AI Confidence</div>
+                <div class="meta-value" style="color:#d29922">
+                  ⚠ LOW
+                </div>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div class="left-col">
+                <div class="section-title">🔄 Agent Trace</div>
+                <div class="trace">
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1a73e8;border-color:#1a73e8">📥</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1a73e8">Intake</span>
+                <span class="trace-detail">Ticket created</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🤖</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Classify</span>
+                <span class="trace-detail">Bedrock Nova → Data/ETL / P2</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🔍</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Pattern Match</span>
+                <span class="trace-detail">NEW · 53% confidence</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#d29922;border-color:#d29922">⚡</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#d29922">Sub-Agent</span>
+                <span class="trace-detail">Data/ETL Agent investigated</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">✅</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Resolve</span>
+                <span class="trace-detail">Status: RESOLVED</span>
+              </div>
+            </div></div>
+              </div>
+              <div class="right-col">
+                <div class="section-title">📋 Issue Summary</div>
+                <div class="issue-text">The Glue job 'daily_claims_load' failed due to a connection timeout, likely caused by network issues, resource constraints, or misconfigured security settings.</div>
+                <div class="section-title" style="margin-top:12px">🛠 Remediation Steps</div>
+                <div class="steps"><div class="step-line">› Check the network connectivity between the Glue job and the data source.</div><div class="step-line">› Verify the security group and network access control list (NACL) rules to ensure they allow traffic to and from the data source.</div><div class="step-line">› Review the Glue job's resource allocation (e.g., number of Data Processing Units (DPUs), memory) and adjust if necessary.</div><div class="step-line">› Inspect the Glue job logs for any additional error messages or warnings that could provide more context.</div><div class="step-line">› Test the connection to the data source using a simple script or tool to ensure it is reachable.</div><div class="step-line">› If the data source is on-premises, ensure that the VPN or Direct Connect connection is stable and operational.</div><div class="step-line">› Consider increasing the Glue job's timeout settings if the job typically takes a long time to complete.</div></div>
+                <div class="res-title">☁ AWS Resources</div><div class="res-item">arn:aws:glue:<region>:<account_id>:job/daily_claims_load</div><div class="res-item">arn:aws:ec2:<region>:<account_id>:security-group/<security_group_id></div><div class="res-item">arn:aws:ec2:<region>:<account_id>:network-acl/<network_acl_id></div><div class="res-item">arn:aws:ec2:<region>:<account_id>:subnet/<subnet_id></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card" id="infra">
+          <div class="card-header" style="border-left:5px solid #1d8348">
+            <div class="card-title">
+              <span class="agent-icon">🖥</span>
+              <span class="agent-name" style="color:#1d8348">Infrastructure Agent</span>
+              <span class="status-badge" style="background:#1d834820;color:#1d8348;border:1px solid #1d8348">✓ PASSED</span>
+              <span class="duration">1649ms</span>
+            </div>
+            <div class="ticket-desc">"EC2 instance i-0abc123 unreachable, disk at 98%"</div>
+          </div>
+          <div class="card-body">
+            <div class="meta-row">
+              <div class="meta-item">
+                <div class="meta-label">Category</div>
+                <div class="meta-value" style="color:#1d8348">Infrastructure</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Severity</div>
+                <div class="meta-value" style="color:#d29922">P2</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Pattern</div>
+                <div class="meta-value" style="color:#7d3c98">NEW</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Confidence</div>
+                <div class="conf-bar-wrap">
+                  <div class="conf-bar"><div class="conf-fill" style="width:38%;background:#c0392b"></div></div>
+                  <span style="color:#c0392b;font-weight:700">38%</span>
+                </div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">AI Confidence</div>
+                <div class="meta-value" style="color:#d29922">
+                  ⚠ LOW
+                </div>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div class="left-col">
+                <div class="section-title">🔄 Agent Trace</div>
+                <div class="trace">
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1a73e8;border-color:#1a73e8">📥</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1a73e8">Intake</span>
+                <span class="trace-detail">Ticket created</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🤖</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Classify</span>
+                <span class="trace-detail">Bedrock Nova → Infrastructure / P2</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🔍</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Pattern Match</span>
+                <span class="trace-detail">NEW · 38% confidence</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">⚡</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Sub-Agent</span>
+                <span class="trace-detail">Infrastructure Agent investigated</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">✅</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Resolve</span>
+                <span class="trace-detail">Status: RESOLVED</span>
+              </div>
+            </div></div>
+              </div>
+              <div class="right-col">
+                <div class="section-title">📋 Issue Summary</div>
+                <div class="issue-text">EC2 instance i-0abc123 is unreachable due to the disk being at 98% capacity, which is likely causing the instance to be unresponsive.</div>
+                <div class="section-title" style="margin-top:12px">🛠 Remediation Steps</div>
+                <div class="steps"><div class="step-line">› Check the current disk usage on the EC2 instance.</div><div class="step-line">› Identify and delete any unnecessary files or logs that are taking up space.</div><div class="step-line">› Consider increasing the volume size if the instance requires more storage.</div><div class="step-line">› Restart the instance to ensure it recovers from the disk space issue.</div><div class="step-line">› Monitor the disk usage to prevent future issues.</div></div>
+                <div class="res-title">☁ AWS Resources</div><div class="res-item">arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card" id="access">
+          <div class="card-header" style="border-left:5px solid #d35400">
+            <div class="card-title">
+              <span class="agent-icon">🔑</span>
+              <span class="agent-name" style="color:#d35400">Access/IAM Agent</span>
+              <span class="status-badge" style="background:#1d834820;color:#1d8348;border:1px solid #1d8348">✓ PASSED</span>
+              <span class="duration">1555ms</span>
+            </div>
+            <div class="ticket-desc">"Lambda function can't write to S3 bucket prod-reports"</div>
+          </div>
+          <div class="card-body">
+            <div class="meta-row">
+              <div class="meta-item">
+                <div class="meta-label">Category</div>
+                <div class="meta-value" style="color:#d35400">Access/IAM</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Severity</div>
+                <div class="meta-value" style="color:#d29922">P2</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Pattern</div>
+                <div class="meta-value" style="color:#7d3c98">NEW</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Confidence</div>
+                <div class="conf-bar-wrap">
+                  <div class="conf-bar"><div class="conf-fill" style="width:39%;background:#c0392b"></div></div>
+                  <span style="color:#c0392b;font-weight:700">39%</span>
+                </div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">AI Confidence</div>
+                <div class="meta-value" style="color:#d29922">
+                  ⚠ LOW
+                </div>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div class="left-col">
+                <div class="section-title">🔄 Agent Trace</div>
+                <div class="trace">
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1a73e8;border-color:#1a73e8">📥</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1a73e8">Intake</span>
+                <span class="trace-detail">Ticket created</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🤖</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Classify</span>
+                <span class="trace-detail">Bedrock Nova → Access/IAM / P2</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🔍</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Pattern Match</span>
+                <span class="trace-detail">NEW · 39% confidence</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#d35400;border-color:#d35400">⚡</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#d35400">Sub-Agent</span>
+                <span class="trace-detail">Access/IAM Agent investigated</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">✅</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Resolve</span>
+                <span class="trace-detail">Status: RESOLVED</span>
+              </div>
+            </div></div>
+              </div>
+              <div class="right-col">
+                <div class="section-title">📋 Issue Summary</div>
+                <div class="issue-text">The Lambda function does not have the necessary permissions to write to the S3 bucket 'prod-reports'.</div>
+                <div class="section-title" style="margin-top:12px">🛠 Remediation Steps</div>
+                <div class="steps"><div class="step-line">› Check the IAM policy attached to the Lambda function's execution role to ensure it includes the necessary permissions to write to the S3 bucket 'prod-reports'.</div><div class="step-line">› Verify that the S3 bucket policy allows the Lambda function's execution role to write to the bucket.</div><div class="step-line">› If necessary, update the IAM policy to include the required permissions, such as 's3:PutObject' and's3:PutObjectAcl'.</div><div class="step-line">› Ensure the Lambda function's execution role ARN is correctly referenced in the S3 bucket policy.</div></div>
+                <div class="res-title">☁ AWS Resources</div><div class="res-item">arn:aws:iam::123456789012:role/lambda-execution-role</div><div class="res-item">arn:aws:s3:::prod-reports</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card" id="network">
+          <div class="card-header" style="border-left:5px solid #c0392b">
+            <div class="card-title">
+              <span class="agent-icon">🌐</span>
+              <span class="agent-name" style="color:#c0392b">Network Agent</span>
+              <span class="status-badge" style="background:#1d834820;color:#1d8348;border:1px solid #1d8348">✓ PASSED</span>
+              <span class="duration">2223ms</span>
+            </div>
+            <div class="ticket-desc">"API gateway returning 503, backend health checks failing"</div>
+          </div>
+          <div class="card-body">
+            <div class="meta-row">
+              <div class="meta-item">
+                <div class="meta-label">Category</div>
+                <div class="meta-value" style="color:#c0392b">Network</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Severity</div>
+                <div class="meta-value" style="color:#d29922">P2</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Pattern</div>
+                <div class="meta-value" style="color:#7d3c98">NEW</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Confidence</div>
+                <div class="conf-bar-wrap">
+                  <div class="conf-bar"><div class="conf-fill" style="width:39%;background:#c0392b"></div></div>
+                  <span style="color:#c0392b;font-weight:700">39%</span>
+                </div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">AI Confidence</div>
+                <div class="meta-value" style="color:#d29922">
+                  ⚠ LOW
+                </div>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div class="left-col">
+                <div class="section-title">🔄 Agent Trace</div>
+                <div class="trace">
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1a73e8;border-color:#1a73e8">📥</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1a73e8">Intake</span>
+                <span class="trace-detail">Ticket created</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🤖</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Classify</span>
+                <span class="trace-detail">Bedrock Nova → Network / P2</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#7d3c98;border-color:#7d3c98">🔍</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#7d3c98">Pattern Match</span>
+                <span class="trace-detail">NEW · 39% confidence</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#c0392b;border-color:#c0392b">⚡</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#c0392b">Sub-Agent</span>
+                <span class="trace-detail">Network Agent investigated</span>
+              </div>
+            </div>
+            <div class="trace-step">
+              <div class="trace-dot" style="background:#1d8348;border-color:#1d8348">✅</div>
+              <div class="trace-body">
+                <span class="trace-name" style="color:#1d8348">Resolve</span>
+                <span class="trace-detail">Status: RESOLVED</span>
+              </div>
+            </div></div>
+              </div>
+              <div class="right-col">
+                <div class="section-title">📋 Issue Summary</div>
+                <div class="issue-text">The API gateway is returning a 503 error due to backend health checks failing, indicating that the backend service is not available or responding.</div>
+                <div class="section-title" style="margin-top:12px">🛠 Remediation Steps</div>
+                <div class="steps"><div class="step-line">› Check the status of the backend service (e.g., EC2 instances, ECS tasks, Lambda functions) to ensure they are running.</div><div class="step-line">› Verify the network configuration (e.g., security groups, NACLs, VPC endpoints) to ensure the API gateway can communicate with the backend service.</div><div class="step-line">› Inspect the backend service logs for any errors or issues that might be causing the health checks to fail.</div><div class="step-line">› Ensure that the backend service is properly configured to handle the requests from the API gateway.</div><div class="step-line">› If using a load balancer, verify its health check configuration and ensure it is correctly routing traffic to healthy backend instances.</div></div>
+                <div class="res-title">☁ AWS Resources</div><div class="res-item">arn:aws:ec2:region:account-id:instance/instance-id</div><div class="res-item">arn:aws:ecs:region:account-id:task-definition/task-definition-name</div><div class="res-item">arn:aws:lambda:region:account-id:function:function-name</div><div class="res-item">arn:aws:elasticloadbalancing:region:account-id:loadbalancer/app/load-balancer-name/load-balancer-id</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+  <div style="text-align:center;color:#888;font-size:.75rem;margin-top:20px;padding:16px">
+    Generated by IT Ticket Intelligence Agent · AWS Hackathon 2026 ·
+    <a href="https://github.com/sksmartcoder/agent-code" style="color:#1a73e8">GitHub</a>
+  </div>
+</div>
+</body>
+</html>
