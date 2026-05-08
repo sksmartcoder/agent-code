@@ -7,6 +7,7 @@ from tools.pattern_matcher import route_ticket
 from tools.models import FixSuggestion
 from tools.notifier import present_fix_and_get_approval
 from tools.tracer import start_trace, log, end_trace
+from tools.agent_bus import bus, AgentMessage
 from agent_core.cicd_agent import CICDAgent
 from agent_core.data_agent import DataETLAgent
 from agent_core.infra_agent import InfraAgent
@@ -36,6 +37,15 @@ SUB_AGENTS = {
     "CI/CD": CICDAgent(), "Data/ETL": DataETLAgent(),
     "Infrastructure": InfraAgent(), "Access/IAM": AccessIAMAgent(), "Network": NetworkAgent(),
 }
+
+# Register all agents on the bus
+for _name, _agent in SUB_AGENTS.items():
+    bus.register(_agent.__class__.__name__, _agent)
+bus.register("InfraAgent",     SUB_AGENTS["Infrastructure"])
+bus.register("DataETLAgent",   SUB_AGENTS["Data/ETL"])
+bus.register("CICDAgent",      SUB_AGENTS["CI/CD"])
+bus.register("AccessIAMAgent", SUB_AGENTS["Access/IAM"])
+bus.register("NetworkAgent",   SUB_AGENTS["Network"])
 
 
 class _Spinner:
@@ -160,6 +170,7 @@ class MasterAgent:
         final_status = present_fix_and_get_approval(ticket, fix, self.dynamodb)
         log("MasterAgent", "APPROVAL_DECISION", f"status={final_status}", "DONE")
         end_trace(final_status, ticket.ticket_id)
+        bus.print_conversation()
 
         _print_final(ticket.ticket_id, final_status)
         return {"ticket_id": ticket.ticket_id, "final_status": final_status}
@@ -171,6 +182,29 @@ class MasterAgent:
                 issue_summary="Unknown category.",
                 remediation_steps="Escalate to on-call.",
                 confidence="LOW_CONFIDENCE")
+
+        # Send via agent bus — structured message
+        response = bus.send(AgentMessage(
+            sender="MasterAgent",
+            receiver=agent.__class__.__name__,
+            msg_type="REQUEST",
+            content={
+                "ticket_id":   ticket.ticket_id,
+                "description": ticket.description,
+                "category":    ticket.category,
+                "severity":    ticket.severity,
+            }
+        ))
+
+        if response and response.msg_type == "RESPONSE":
+            return FixSuggestion(
+                issue_summary=response.content.get("issue_summary", "No summary"),
+                remediation_steps=response.content.get("remediation_steps", "No steps"),
+                confidence=response.content.get("confidence", "LOW_CONFIDENCE"),
+                aws_resources=response.content.get("aws_resources", []),
+            )
+
+        # Fallback: direct call
         return agent.investigate(
             ticket.ticket_id, ticket.description,
             ticket.category, ticket.severity,

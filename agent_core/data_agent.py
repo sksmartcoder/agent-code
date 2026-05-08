@@ -4,13 +4,14 @@ from botocore.exceptions import ClientError
 from agent_core.base_agent import BaseSubAgent, _call_nova
 from tools.models import FixSuggestion
 from tools.tracer import log
+from tools.agent_bus import bus, AgentMessage
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 
 # ANSI
-R="\033[0m"; B="\033[1m"; GR="\033[92m"; YL="\033[93m"; RD="\033[91m"; CY="\033[96m"
+R="\033[0m"; B="\033[1m"; GR="\033[92m"; YL="\033[93m"; RD="\033[91m"; CY="\033[96m"; MG="\033[95m"
 
 
 class DataETLAgent(BaseSubAgent):
@@ -64,6 +65,29 @@ class DataETLAgent(BaseSubAgent):
             else:
                 print(f"  {GR}✓ Last run succeeded — investigating root cause only{R}")
                 log("DataETLAgent", "GLUE_LAST_RUN_OK", f"job={job_name} status={status}", "INFO")
+
+        # ── Agent-to-agent: consult InfraAgent if storage keywords detected ──
+        storage_keywords = ["disk", "storage", "space", "ebs", "volume", "quota", "full"]
+        if any(kw in description.lower() for kw in storage_keywords):
+            print(f"\n  {MG}🤝 DataETLAgent → InfraAgent: consulting on storage issue...{R}")
+            log("DataETLAgent", "PEER_CONSULT", "→ InfraAgent  reason=storage_keywords_detected", "INFO")
+            infra_response = self.ask_peer(
+                peer_name="InfraAgent",
+                ticket_id=ticket_id,
+                description=description,
+                category="Infrastructure",
+                severity=severity,
+            )
+            if infra_response and infra_response.msg_type == "RESPONSE":
+                infra_steps = infra_response.content.get("remediation_steps", "")
+                if infra_steps:
+                    fix.remediation_steps = (
+                        fix.remediation_steps + "\n\n"
+                        "--- Infrastructure Check (from InfraAgent) ---\n"
+                        + infra_steps
+                    )
+                    log("DataETLAgent", "PEER_RESPONSE_MERGED",
+                        "InfraAgent steps added to fix", "DONE")
 
         return fix
 

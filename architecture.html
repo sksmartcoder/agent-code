@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT Ticket Intelligence Agent — Architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; padding: 32px; }
+
+  h1 { text-align: center; font-size: 1.4rem; color: #58a6ff; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: #8b949e; font-size: 0.85rem; margin-bottom: 32px; }
+
+  /* ── Layout ── */
+  .diagram { display: flex; flex-direction: column; gap: 0; align-items: center; max-width: 1100px; margin: 0 auto; }
+
+  /* ── Rows ── */
+  .row { display: flex; align-items: center; justify-content: center; gap: 0; width: 100%; }
+  .row-label { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.08em; writing-mode: vertical-rl; transform: rotate(180deg); padding: 0 8px; min-width: 32px; }
+
+  /* ── Boxes ── */
+  .box {
+    border-radius: 10px; padding: 12px 16px; text-align: center;
+    border: 1.5px solid; position: relative; min-width: 110px;
+  }
+  .box .icon { font-size: 1.6rem; display: block; margin-bottom: 4px; }
+  .box .name { font-size: 0.8rem; font-weight: 600; }
+  .box .desc { font-size: 0.68rem; color: #8b949e; margin-top: 3px; line-height: 1.3; }
+  .box .badge { display: inline-block; font-size: 0.6rem; border-radius: 4px; padding: 1px 6px; margin-top: 4px; }
+
+  /* colours */
+  .blue   { border-color: #1f6feb; background: #1f6feb18; }
+  .blue .name { color: #58a6ff; }
+  .blue .badge { background: #1f6feb33; color: #58a6ff; }
+
+  .green  { border-color: #3fb950; background: #3fb95018; }
+  .green .name { color: #3fb950; }
+
+  .yellow { border-color: #d29922; background: #d2992218; }
+  .yellow .name { color: #d29922; }
+
+  .red    { border-color: #f85149; background: #f8514918; }
+  .red .name { color: #f85149; }
+
+  .purple { border-color: #a371f7; background: #a371f718; }
+  .purple .name { color: #a371f7; }
+
+  .cyan   { border-color: #39d0d8; background: #39d0d818; }
+  .cyan .name { color: #39d0d8; }
+
+  .orange { border-color: #ff9900; background: #ff990018; }
+  .orange .name { color: #ff9900; }
+
+  .gray   { border-color: #30363d; background: #161b22; }
+  .gray .name { color: #8b949e; }
+
+  /* ── Master agent special ── */
+  .master {
+    border-color: #58a6ff; background: linear-gradient(135deg, #1f6feb22, #0d1117);
+    box-shadow: 0 0 24px #58a6ff33; min-width: 220px; padding: 16px 24px;
+  }
+  .master .name { color: #58a6ff; font-size: 1rem; }
+
+  /* ── Arrows ── */
+  .arrow-down { display: flex; justify-content: center; height: 32px; align-items: center; }
+  .arrow-down::after { content: ''; display: block; width: 2px; height: 24px; background: #30363d; position: relative; }
+  .arrow-down.active::after { background: linear-gradient(#58a6ff, #3fb950); }
+
+  .arrow-right { display: flex; align-items: center; width: 32px; justify-content: center; }
+  .arrow-right::after { content: '▶'; color: #30363d; font-size: 0.7rem; }
+  .arrow-right.active::after { color: #58a6ff; }
+  .arrow-right.green-arrow::after { color: #3fb950; }
+  .arrow-right.yellow-arrow::after { color: #d29922; }
+
+  /* ── Agent bus line ── */
+  .bus-line {
+    width: 90%; height: 3px;
+    background: linear-gradient(90deg, #1f6feb, #a371f7, #3fb950, #d29922, #f85149);
+    border-radius: 2px; margin: 0 auto;
+    box-shadow: 0 0 8px #58a6ff44;
+    position: relative;
+  }
+  .bus-label {
+    text-align: center; font-size: 0.7rem; color: #8b949e;
+    margin: 4px 0 8px; letter-spacing: 0.05em;
+  }
+
+  /* ── Sub-agents row ── */
+  .agents-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  /* ── AWS services row ── */
+  .aws-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+
+  /* ── Connector lines ── */
+  .connector { display: flex; flex-direction: column; align-items: center; }
+  .v-line { width: 2px; background: #30363d; flex: 1; min-height: 20px; }
+  .v-line.active { background: #58a6ff; }
+  .v-line.green { background: #3fb950; }
+
+  /* ── Flow section ── */
+  .section { width: 100%; margin: 8px 0; }
+  .section-title {
+    font-size: 0.7rem; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 0.08em; text-align: center; margin-bottom: 8px;
+  }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #8b949e; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── Flow steps ── */
+  .flow-steps {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: nowrap; overflow-x: auto; padding: 8px 0;
+  }
+  .flow-step {
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 90px; position: relative;
+  }
+  .flow-step:not(:last-child)::after {
+    content: ''; position: absolute; top: 20px; left: 60%;
+    width: 80%; height: 2px; background: #30363d; z-index: 0;
+  }
+  .step-circle {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; border: 2px solid #30363d; background: #0d1117;
+    z-index: 1; position: relative;
+  }
+  .step-circle.s1 { border-color: #58a6ff; background: #1f6feb22; }
+  .step-circle.s2 { border-color: #a371f7; background: #a371f722; }
+  .step-circle.s3 { border-color: #d29922;  background: #d2992222; }
+  .step-circle.s4 { border-color: #3fb950;  background: #3fb95022; }
+  .step-circle.s5 { border-color: #ff9900;  background: #ff990022; }
+  .step-lbl { font-size: 0.68rem; color: #8b949e; margin-top: 6px; text-align: center; }
+
+  /* ── Agent interaction ── */
+  .interaction-box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px; width: 90%; margin: 0 auto;
+  }
+  .interaction-title { font-size: 0.75rem; color: #8b949e; margin-bottom: 12px; text-transform: uppercase; }
+  .msg-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 0.78rem; }
+  .msg-sender { color: #58a6ff; font-weight: 600; min-width: 120px; }
+  .msg-arrow { color: #30363d; }
+  .msg-receiver { color: #3fb950; font-weight: 600; min-width: 120px; }
+  .msg-type { font-size: 0.65rem; border-radius: 4px; padding: 1px 6px; }
+  .t-request  { background: #1f6feb33; color: #58a6ff; }
+  .t-response { background: #3fb95033; color: #3fb950; }
+  .t-notify   { background: #d2992233; color: #d29922; }
+  .t-escalate { background: #f8514933; color: #f85149; }
+  .msg-content { color: #8b949e; font-size: 0.7rem; }
+
+  @media (max-width: 700px) {
+    .agents-row { gap: 8px; }
+    .box { min-width: 80px; padding: 8px 10px; }
+    .flow-steps { gap: 0; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🎫 IT Ticket Intelligence Agent</h1>
+<p class="subtitle">Multi-Agent Architecture · Amazon Bedrock Nova · Strands SDK · AWS</p>
+
+<div class="diagram">
+
+  <!-- ── ENTRY POINTS ── -->
+  <div class="section">
+    <div class="section-title">Entry Points</div>
+    <div class="row" style="gap:16px">
+      <div class="box blue">
+        <span class="icon">🌐</span>
+        <div class="name">Web Dashboard</div>
+        <div class="desc">S3 Static Site</div>
+        <span class="badge">amzn-hackthon-it-ticket-system.s3-website-us-west-2.amazonaws.com</span>
+      </div>
+      <div class="box gray">
+        <span class="icon">💻</span>
+        <div class="name">CLI / Terminal</div>
+        <div class="desc">python3 demo.py<br>python3 app.py</div>
+      </div>
+      <div class="box purple">
+        <span class="icon">☁</span>
+        <div class="name">AgentCore Runtime</div>
+        <div class="desc">agentcore invoke</div>
+        <span class="badge" style="background:#a371f733;color:#a371f7">READY</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down active"></div>
+
+  <!-- ── LAMBDA API ── -->
+  <div class="section">
+    <div class="section-title">API Layer</div>
+    <div class="row" style="gap:16px">
+      <div class="box orange">
+        <span class="icon">λ</span>
+        <div class="name">Lambda Function</div>
+        <div class="desc">it-ticket-agent-api<br>Function URL (HTTPS)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down active"></div>
+
+  <!-- ── PIPELINE FLOW ── -->
+  <div class="section">
+    <div class="section-title">Processing Pipeline</div>
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="step-circle s1">📥</div>
+        <div class="step-lbl">1. Intake<br><span style="color:#58a6ff">Validate</span></div>
+      </div>
+      <div class="flow-step">
+        <div class="step-circle s2">🤖</div>
+        <div class="step-lbl">2. Classify<br><span style="color:#a371f7">Bedrock Nova</span></div>
+      </div>
+      <div class="flow-step">
+        <div class="step-circle s3">🔍</div>
+        <div class="step-lbl">3. Pattern<br><span style="color:#d29922">Match</span></div>
+      </div>
+      <div class="flow-step">
+        <div class="step-circle s4">⚡</div>
+        <div class="step-lbl">4. Sub-Agent<br><span style="color:#3fb950">Specialist</span></div>
+      </div>
+      <div class="flow-step">
+        <div class="step-circle s5">✅</div>
+        <div class="step-lbl">5. Resolve<br><span style="color:#ff9900">Approve</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down active"></div>
+
+  <!-- ── MASTER AGENT ── -->
+  <div class="section">
+    <div class="section-title">Orchestrator</div>
+    <div class="row">
+      <div class="box master">
+        <span class="icon">🎯</span>
+        <div class="name">Master Agent</div>
+        <div class="desc" style="color:#8b949e;margin-top:4px">
+          Strands SDK · Bedrock Nova Lite<br>
+          Classifies · Routes · Approves · Logs
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down active"></div>
+
+  <!-- ── AGENT BUS ── -->
+  <div class="section">
+    <div class="section-title">Agent Message Bus</div>
+    <div class="bus-line"></div>
+    <div class="bus-label">REQUEST · RESPONSE · NOTIFY · ESCALATE</div>
+  </div>
+
+  <!-- ── SUB-AGENTS ── -->
+  <div class="section">
+    <div class="section-title">Specialist Sub-Agents</div>
+    <div class="agents-row">
+      <div class="box blue">
+        <span class="icon">🔧</span>
+        <div class="name">CI/CD Agent</div>
+        <div class="desc">CodePipeline<br>ECS · ECR · OOM</div>
+      </div>
+      <div class="box yellow">
+        <span class="icon">🗄 </span>
+        <div class="name">Data/ETL Agent</div>
+        <div class="desc">Glue · RDS · JDBC<br>Auto re-run ⚡</div>
+      </div>
+      <div class="box green">
+        <span class="icon">🖥 </span>
+        <div class="name">Infra Agent</div>
+        <div class="desc">EC2 · EBS · Disk<br>CPU · Memory</div>
+      </div>
+      <div class="box yellow" style="border-color:#d29922">
+        <span class="icon">🔑</span>
+        <div class="name">Access/IAM Agent</div>
+        <div class="desc">Lambda · S3<br>Roles · Policies</div>
+      </div>
+      <div class="box red">
+        <span class="icon">🌐</span>
+        <div class="name">Network Agent</div>
+        <div class="desc">VPC · ALB · SG<br>API Gateway 503</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down active"></div>
+
+  <!-- ── AGENT-TO-AGENT INTERACTION ── -->
+  <div class="section">
+    <div class="section-title">Agent-to-Agent Interactions</div>
+    <div class="interaction-box">
+      <div class="interaction-title">Message Bus Conversation Log (example)</div>
+
+      <div class="msg-row">
+        <span class="msg-sender">🎯 MasterAgent</span>
+        <span class="msg-arrow">──▶</span>
+        <span class="msg-receiver">🗄  DataETLAgent</span>
+        <span class="msg-type t-request">REQUEST</span>
+        <span class="msg-content">ticket_id=abc123 · category=Data/ETL · severity=P2</span>
+      </div>
+      <div class="msg-row">
+        <span class="msg-sender">🗄  DataETLAgent</span>
+        <span class="msg-arrow">──▶</span>
+        <span class="msg-receiver">🖥  InfraAgent</span>
+        <span class="msg-type t-notify">NOTIFY</span>
+        <span class="msg-content">storage keywords detected → consulting peer agent</span>
+      </div>
+      <div class="msg-row">
+        <span class="msg-sender">🖥  InfraAgent</span>
+        <span class="msg-arrow">──▶</span>
+        <span class="msg-receiver">🗄  DataETLAgent</span>
+        <span class="msg-type t-response">RESPONSE</span>
+        <span class="msg-content">disk remediation steps merged into fix</span>
+      </div>
+      <div class="msg-row">
+        <span class="msg-sender">🗄  DataETLAgent</span>
+        <span class="msg-arrow">──▶</span>
+        <span class="msg-receiver">🎯 MasterAgent</span>
+        <span class="msg-type t-response">RESPONSE</span>
+        <span class="msg-content">issue_summary · remediation_steps · confidence=HIGH</span>
+      </div>
+      <div class="msg-row">
+        <span class="msg-sender">🎯 MasterAgent</span>
+        <span class="msg-arrow">──▶</span>
+        <span class="msg-receiver">👤 Operator</span>
+        <span class="msg-type" style="background:#ff990033;color:#ff9900">APPROVAL</span>
+        <span class="msg-content">fix presented → approve / reject</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down active"></div>
+
+  <!-- ── AWS SERVICES ── -->
+  <div class="section">
+    <div class="section-title">AWS Services</div>
+    <div class="aws-row">
+      <div class="box orange">
+        <span class="icon">🧠</span>
+        <div class="name">Bedrock Nova Lite</div>
+        <div class="desc">us.amazon.nova-lite-v1:0<br>Classify + Fix generation</div>
+        <span class="badge" style="background:#3fb95033;color:#3fb950">✓ LIVE</span>
+      </div>
+      <div class="box blue">
+        <span class="icon">🪣</span>
+        <div class="name">S3</div>
+        <div class="desc">Static dashboard<br>5 domain runbooks</div>
+        <span class="badge" style="background:#3fb95033;color:#3fb950">✓ LIVE</span>
+      </div>
+      <div class="box orange">
+        <span class="icon">λ</span>
+        <div class="name">Lambda</div>
+        <div class="desc">it-ticket-agent-api<br>API backend</div>
+        <span class="badge" style="background:#3fb95033;color:#3fb950">✓ LIVE</span>
+      </div>
+      <div class="box purple">
+        <span class="icon">☁</span>
+        <div class="name">AgentCore</div>
+        <div class="desc">Runtime deployed<br>Memory: STM</div>
+        <span class="badge" style="background:#3fb95033;color:#3fb950">✓ READY</span>
+      </div>
+      <div class="box gray">
+        <span class="icon">🗃</span>
+        <div class="name">DynamoDB</div>
+        <div class="desc">Tickets · Patterns<br>Resolutions</div>
+        <span class="badge" style="background:#d2992233;color:#d29922">moto mock</span>
+      </div>
+      <div class="box gray">
+        <span class="icon">🔄</span>
+        <div class="name">AWS Glue</div>
+        <div class="desc">ETL job re-run<br>Auto-remediation</div>
+        <span class="badge" style="background:#d2992233;color:#d29922">moto mock</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── KNOWLEDGE BASE ── -->
+  <div class="arrow-down"></div>
+  <div class="section">
+    <div class="section-title">Knowledge Base (S3 Runbooks)</div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;justify-content:center">
+      <div class="box gray" style="min-width:90px;padding:8px 12px">
+        <span class="icon" style="font-size:1rem">📄</span>
+        <div class="name" style="font-size:0.72rem">cicd_runbook.md</div>
+      </div>
+      <div class="box gray" style="min-width:90px;padding:8px 12px">
+        <span class="icon" style="font-size:1rem">📄</span>
+        <div class="name" style="font-size:0.72rem">data_runbook.md</div>
+      </div>
+      <div class="box gray" style="min-width:90px;padding:8px 12px">
+        <span class="icon" style="font-size:1rem">📄</span>
+        <div class="name" style="font-size:0.72rem">infra_runbook.md</div>
+      </div>
+      <div class="box gray" style="min-width:90px;padding:8px 12px">
+        <span class="icon" style="font-size:1rem">📄</span>
+        <div class="name" style="font-size:0.72rem">access_runbook.md</div>
+      </div>
+      <div class="box gray" style="min-width:90px;padding:8px 12px">
+        <span class="icon" style="font-size:1rem">📄</span>
+        <div class="name" style="font-size:0.72rem">network_runbook.md</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── LEGEND ── -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Live AWS Service</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Resolved / Done</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div> Mocked (no permissions)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#a371f7"></div> AgentCore Runtime</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Network / P1 Critical</div>
+</div>
+
+<p style="text-align:center;color:#8b949e;font-size:0.72rem;margin-top:24px">
+  Hackathon Demo · AWS Account 628875594738 · us-west-2
+</p>
+
+</body>
+</html>

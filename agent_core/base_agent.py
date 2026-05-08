@@ -8,6 +8,7 @@ import config
 from tools.models import FixSuggestion
 from tools.knowledge_base import get_runbook
 from tools.tracer import log
+from tools.agent_bus import bus, AgentMessage
 
 FIX_JSON_SCHEMA = (
     "Respond ONLY with JSON: "
@@ -39,6 +40,65 @@ def _call_nova(system_prompt: str, prompt: str) -> str:
 class BaseSubAgent:
     domain = "Unknown"
     category = "Unknown"
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Auto-register with bus when subclass is defined
+        import sys
+        if "agent_core" in sys.modules:
+            pass  # registered lazily on first use
+
+    def on_message(self, msg: AgentMessage) -> AgentMessage | None:
+        """
+        Handle incoming messages from other agents.
+        Override in subclasses for custom inter-agent logic.
+        """
+        if msg.msg_type == "REQUEST":
+            content = msg.content
+            result = self.investigate(
+                ticket_id=content.get("ticket_id", "unknown"),
+                description=content.get("description", ""),
+                category=content.get("category", self.category),
+                severity=content.get("severity", "P3"),
+            )
+            return AgentMessage(
+                sender=self.__class__.__name__,
+                receiver=msg.sender,
+                msg_type="RESPONSE",
+                reply_to=msg.msg_id,
+                content={
+                    "issue_summary":    result.issue_summary,
+                    "remediation_steps": result.remediation_steps,
+                    "confidence":       result.confidence,
+                    "aws_resources":    result.aws_resources,
+                }
+            )
+        return None
+
+    def ask_peer(self, peer_name: str, ticket_id: str,
+                 description: str, category: str, severity: str) -> AgentMessage | None:
+        """Send a REQUEST to a peer agent and return its RESPONSE."""
+        msg = AgentMessage(
+            sender=self.__class__.__name__,
+            receiver=peer_name,
+            msg_type="REQUEST",
+            content={
+                "ticket_id":   ticket_id,
+                "description": description,
+                "category":    category,
+                "severity":    severity,
+            }
+        )
+        return bus.send(msg)
+
+    def notify_master(self, ticket_id: str, event: str, detail: str):
+        """Send a NOTIFY to MasterAgent (e.g. escalation, extra context)."""
+        bus.send(AgentMessage(
+            sender=self.__class__.__name__,
+            receiver="MasterAgent",
+            msg_type="NOTIFY",
+            content={"ticket_id": ticket_id, "event": event, "detail": detail}
+        ))
 
     def investigate(self, ticket_id, description, category, severity, s3_client=None, bedrock_client=None):
         agent_name = self.__class__.__name__
