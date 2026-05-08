@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT Ticket Agent — Process Flow</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;padding:24px}
+h1{text-align:center;font-size:1.4rem;color:#58a6ff;margin-bottom:4px}
+.sub{text-align:center;color:#8b949e;font-size:.85rem;margin-bottom:20px}
+.toggle{display:flex;justify-content:center;gap:0;margin-bottom:28px}
+.toggle button{padding:10px 32px;border:1.5px solid #30363d;background:#161b22;color:#8b949e;cursor:pointer;font-size:.9rem;transition:all .2s}
+.toggle button:first-child{border-radius:8px 0 0 8px}
+.toggle button:last-child{border-radius:0 8px 8px 0}
+.toggle button.active{background:#1f6feb;border-color:#1f6feb;color:#fff;font-weight:600}
+.view{display:none}.view.show{display:block}
+
+/* NON-TECH */
+.story{max-width:800px;margin:0 auto}
+.story-step{display:flex;gap:20px;align-items:flex-start;margin-bottom:8px;position:relative}
+.story-step:not(:last-child)::after{content:'';position:absolute;left:28px;top:60px;width:2px;height:calc(100% - 20px);background:linear-gradient(#1f6feb,#3fb950)}
+.story-icon{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;border:2px solid}
+.story-body{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px 20px;flex:1}
+.story-body h3{font-size:1rem;margin-bottom:6px}
+.story-body p{font-size:.88rem;color:#8b949e;line-height:1.6}
+.story-body .example{background:#0d1117;border-left:3px solid #1f6feb;padding:8px 12px;margin-top:10px;border-radius:0 6px 6px 0;font-size:.82rem;color:#58a6ff;font-style:italic}
+.s1{border-color:#58a6ff;background:#1f6feb22}.s1 h3{color:#58a6ff}
+.s2{border-color:#a371f7;background:#a371f722}.s2 h3{color:#a371f7}
+.s3{border-color:#d29922;background:#d2992222}.s3 h3{color:#d29922}
+.s4{border-color:#3fb950;background:#3fb95022}.s4 h3{color:#3fb950}
+.s5{border-color:#ff9900;background:#ff990022}.s5 h3{color:#ff9900}
+.s6{border-color:#3fb950;background:#3fb95033}.s6 h3{color:#3fb950}
+.outcome{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap}
+.outcome-box{flex:1;min-width:180px;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;text-align:center}
+.outcome-box .oi{font-size:1.8rem;display:block;margin-bottom:6px}
+.outcome-box h4{font-size:.85rem;margin-bottom:4px}
+.outcome-box p{font-size:.75rem;color:#8b949e}
+
+/* TECH */
+.tech{max-width:960px;margin:0 auto}
+.lane{margin-bottom:16px}
+.lane-title{font-size:.7rem;color:#8b949e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding-left:4px}
+.flow-row{display:flex;align-items:center;gap:0;flex-wrap:nowrap;overflow-x:auto;padding:4px 0}
+.tbox{border-radius:8px;padding:10px 14px;text-align:center;border:1.5px solid;min-width:120px;flex-shrink:0}
+.tbox .ti{font-size:1.1rem;display:block;margin-bottom:3px}
+.tbox .tn{font-size:.75rem;font-weight:600}
+.tbox .td{font-size:.65rem;color:#8b949e;margin-top:2px}
+.arr{color:#30363d;font-size:.8rem;padding:0 6px;flex-shrink:0}
+.arr.active{color:#58a6ff}
+.arr.green{color:#3fb950}
+.arr.yellow{color:#d29922}
+.tb{border-color:#1f6feb;background:#1f6feb18}.tb .tn{color:#58a6ff}
+.tg{border-color:#3fb950;background:#3fb95018}.tg .tn{color:#3fb950}
+.ty{border-color:#d29922;background:#d2992218}.ty .tn{color:#d29922}
+.tr{border-color:#f85149;background:#f8514918}.tr .tn{color:#f85149}
+.tp{border-color:#a371f7;background:#a371f718}.tp .tn{color:#a371f7}
+.to{border-color:#ff9900;background:#ff990018}.to .tn{color:#ff9900}
+.tgr{border-color:#30363d;background:#161b22}.tgr .tn{color:#8b949e}
+.branch{display:flex;gap:12px;margin:8px 0 8px 60px;flex-wrap:wrap}
+.branch-box{border-radius:8px;padding:8px 12px;border:1px solid;min-width:100px;text-align:center}
+.branch-box .bi{font-size:1rem;display:block;margin-bottom:2px}
+.branch-box .bn{font-size:.72rem;font-weight:600}
+.branch-box .bd{font-size:.62rem;color:#8b949e}
+.decision{background:#d2992222;border:1.5px solid #d29922;border-radius:8px;padding:10px 16px;display:inline-flex;align-items:center;gap:8px;font-size:.8rem;color:#d29922;font-weight:600;margin:8px 0}
+.msg-flow{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;margin:8px 0}
+.msg-flow h4{font-size:.75rem;color:#8b949e;margin-bottom:10px;text-transform:uppercase}
+.msg{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:.78rem}
+.ms{color:#58a6ff;font-weight:600;min-width:130px}
+.mr{color:#3fb950;font-weight:600;min-width:130px}
+.mt{font-size:.65rem;border-radius:4px;padding:1px 6px}
+.mt-req{background:#1f6feb33;color:#58a6ff}
+.mt-res{background:#3fb95033;color:#3fb950}
+.mt-not{background:#d2992233;color:#d29922}
+.mc{color:#8b949e;font-size:.7rem}
+.aws-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.aws-box{border-radius:8px;padding:8px 12px;border:1px solid;text-align:center;min-width:110px}
+.aws-box .ai{font-size:1rem;display:block;margin-bottom:2px}
+.aws-box .an{font-size:.72rem;font-weight:600}
+.aws-box .as{font-size:.6rem;border-radius:3px;padding:1px 5px;margin-top:3px;display:inline-block}
+.live{background:#3fb95033;color:#3fb950}
+.mock{background:#d2992233;color:#d29922}
+</style>
+</head>
+<body>
+<h1>🎫 IT Ticket Intelligence Agent</h1>
+<p class="sub">Process Flow — toggle between views</p>
+
+<div class="toggle">
+  <button class="active" onclick="show('simple',this)">👤 Simple View (Leaders)</button>
+  <button onclick="show('tech',this)">⚙️ Technical View (Engineers)</button>
+</div>
+
+<!-- SIMPLE VIEW -->
+<div id="simple" class="view show">
+<div class="story">
+
+  <div class="story-step">
+    <div class="story-icon s1">📝</div>
+    <div class="story-body s1">
+      <h3>Step 1 — Someone reports an IT problem</h3>
+      <p>An IT support ticket is submitted describing the issue. It can come from a web form, a chat message, or a command line. The system accepts it and gives it a unique ID.</p>
+      <div class="example">"CodePipeline deploy failed — ECS task ran out of memory"</div>
+    </div>
+  </div>
+
+  <div class="story-step">
+    <div class="story-icon s2">🤖</div>
+    <div class="story-body s2">
+      <h3>Step 2 — AI reads and understands the problem</h3>
+      <p>Amazon Bedrock (Amazon's AI service) reads the ticket and instantly figures out what type of problem it is and how urgent it is. No human needed for this step.</p>
+      <div class="example">Category: CI/CD Pipeline &nbsp;|&nbsp; Severity: P2 (High) &nbsp;|&nbsp; "ECS memory issue during deployment"</div>
+    </div>
+  </div>
+
+  <div class="story-step">
+    <div class="story-icon s3">🔍</div>
+    <div class="story-body s3">
+      <h3>Step 3 — Has this happened before?</h3>
+      <p>The system checks its memory of past tickets. If this looks like a problem we've solved before, it pulls the proven fix immediately — no need to investigate again.</p>
+      <div class="example">✓ Seen this 4 times before — 88% match — pulling proven fix from knowledge base</div>
+    </div>
+  </div>
+
+  <div class="story-step">
+    <div class="story-icon s4">⚡</div>
+    <div class="story-body s4">
+      <h3>Step 4 — The right specialist takes over</h3>
+      <p>If it's a new problem, the ticket goes to the right specialist AI agent. Each agent knows its domain deeply — pipelines, databases, servers, security, or networking. For data issues, the agent can even automatically restart failed jobs.</p>
+      <div class="example">🔧 CI/CD Agent · 🗄 Data Agent · 🖥 Infrastructure Agent · 🔑 Security Agent · 🌐 Network Agent</div>
+    </div>
+  </div>
+
+  <div class="story-step">
+    <div class="story-icon s5">👤</div>
+    <div class="story-body s5">
+      <h3>Step 5 — A human reviews and approves</h3>
+      <p>The AI presents its recommended fix to an operator. The operator reviews the diagnosis and step-by-step solution, then approves or rejects it. The human stays in control.</p>
+      <div class="example">Operator sees: issue summary + numbered fix steps + affected AWS resources → types "approve"</div>
+    </div>
+  </div>
+
+  <div class="story-step">
+    <div class="story-icon s6">✅</div>
+    <div class="story-body s6">
+      <h3>Step 6 — Resolved and remembered</h3>
+      <p>The ticket is marked resolved. The fix is saved so next time a similar problem appears, the system recognises it instantly and resolves it even faster. The system gets smarter with every ticket.</p>
+      <div class="example">Resolution logged · Pattern updated · Next similar ticket resolves in seconds</div>
+    </div>
+  </div>
+
+  <div class="outcome">
+    <div class="outcome-box">
+      <span class="oi">⚡</span>
+      <h4>Faster Resolution</h4>
+      <p>Recurring issues resolved in seconds, not hours</p>
+    </div>
+    <div class="outcome-box">
+      <span class="oi">🎯</span>
+      <h4>Right Expert Every Time</h4>
+      <p>AI routes to the correct specialist automatically</p>
+    </div>
+    <div class="outcome-box">
+      <span class="oi">🧠</span>
+      <h4>Gets Smarter</h4>
+      <p>Learns from every resolved ticket</p>
+    </div>
+    <div class="outcome-box">
+      <span class="oi">👤</span>
+      <h4>Human in Control</h4>
+      <p>Operator approves every fix before it's applied</p>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- TECH VIEW -->
+<div id="tech" class="view">
+<div class="tech">
+
+  <div class="lane">
+    <div class="lane-title">Entry Layer</div>
+    <div class="flow-row">
+      <div class="tbox tb"><span class="ti">🌐</span><div class="tn">S3 Static Site</div><div class="td">index.html → Lambda URL</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox to"><span class="ti">λ</span><div class="tn">Lambda Function</div><div class="td">it-ticket-agent-api<br>Python 3.12</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox tp"><span class="ti">☁</span><div class="tn">AgentCore Runtime</div><div class="td">agentcore_app.py<br>STM Memory</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox tgr"><span class="ti">💻</span><div class="tn">CLI / demo.py</div><div class="td">python3 demo.py</div></div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title">Orchestration — MasterAgent</div>
+    <div class="flow-row">
+      <div class="tbox tb"><span class="ti">📥</span><div class="tn">1. Intake</div><div class="td">validate_description()<br>create_ticket() → DynamoDB</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox tp"><span class="ti">🤖</span><div class="tn">2. Classify</div><div class="td">Bedrock Nova Lite<br>category + severity + rationale</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox ty"><span class="ti">🔍</span><div class="tn">3. Pattern Match</div><div class="td">Jaccard similarity<br>threshold: 80%</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox tg"><span class="ti">⚡</span><div class="tn">4. Route</div><div class="td">RECURRING → KB<br>NEW → Sub-agent</div></div>
+      <span class="arr active">▶</span>
+      <div class="tbox to"><span class="ti">✅</span><div class="tn">5. Approve</div><div class="td">PENDING_APPROVAL<br>→ RESOLVED / REJECTED</div></div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title">Routing Decision</div>
+    <div class="decision">🔍 Pattern confidence ≥ 80% ?</div>
+    <div class="branch">
+      <div class="branch-box" style="border-color:#3fb950;background:#3fb95018">
+        <span class="bi">✓</span>
+        <div class="bn" style="color:#3fb950">RECURRING</div>
+        <div class="bd">Fetch proven fix<br>from knowledge base<br>No LLM call needed</div>
+      </div>
+      <div class="branch-box" style="border-color:#a371f7;background:#a371f718">
+        <span class="bi">✗</span>
+        <div class="bn" style="color:#a371f7">NEW ISSUE</div>
+        <div class="bd">Delegate to<br>specialist sub-agent<br>via Agent Bus</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title">Specialist Sub-Agents (via Agent Message Bus)</div>
+    <div class="branch">
+      <div class="branch-box" style="border-color:#58a6ff;background:#1f6feb18">
+        <span class="bi">🔧</span>
+        <div class="bn" style="color:#58a6ff">CICDAgent</div>
+        <div class="bd">CodePipeline<br>ECS · ECR · OOM</div>
+      </div>
+      <div class="branch-box" style="border-color:#d29922;background:#d2992218">
+        <span class="bi">🗄</span>
+        <div class="bn" style="color:#d29922">DataETLAgent</div>
+        <div class="bd">Glue · RDS · JDBC<br>+ Glue auto-rerun ⚡<br>+ consults InfraAgent</div>
+      </div>
+      <div class="branch-box" style="border-color:#3fb950;background:#3fb95018">
+        <span class="bi">🖥</span>
+        <div class="bn" style="color:#3fb950">InfraAgent</div>
+        <div class="bd">EC2 · EBS<br>Disk · CPU</div>
+      </div>
+      <div class="branch-box" style="border-color:#d29922;background:#d2992218">
+        <span class="bi">🔑</span>
+        <div class="bn" style="color:#d29922">AccessIAMAgent</div>
+        <div class="bd">Lambda · S3<br>Roles · Policies</div>
+      </div>
+      <div class="branch-box" style="border-color:#f85149;background:#f8514918">
+        <span class="bi">🌐</span>
+        <div class="bn" style="color:#f85149">NetworkAgent</div>
+        <div class="bd">VPC · ALB · SG<br>API Gateway 503</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title">Agent-to-Agent Communication (Agent Bus)</div>
+    <div class="msg-flow">
+      <h4>Message flow example — Glue timeout with storage issue</h4>
+      <div class="msg"><span class="ms">🎯 MasterAgent</span><span style="color:#30363d">──▶</span><span class="mr">🗄 DataETLAgent</span><span class="mt mt-req">REQUEST</span><span class="mc">ticket_id · description · category=Data/ETL · severity=P2</span></div>
+      <div class="msg"><span class="ms">🗄 DataETLAgent</span><span style="color:#30363d">──▶</span><span class="mr">🖥 InfraAgent</span><span class="mt mt-not">NOTIFY</span><span class="mc">storage keywords detected → peer consult</span></div>
+      <div class="msg"><span class="ms">🖥 InfraAgent</span><span style="color:#30363d">──▶</span><span class="mr">🗄 DataETLAgent</span><span class="mt mt-res">RESPONSE</span><span class="mc">disk remediation steps merged into fix</span></div>
+      <div class="msg"><span class="ms">🗄 DataETLAgent</span><span style="color:#30363d">──▶</span><span class="mr">🎯 MasterAgent</span><span class="mt mt-res">RESPONSE</span><span class="mc">issue_summary · remediation_steps · confidence=HIGH · glue_run_id=01</span></div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title">AWS Services</div>
+    <div class="aws-row">
+      <div class="aws-box" style="border-color:#ff9900;background:#ff990018">
+        <span class="ai">🧠</span><div class="an" style="color:#ff9900">Bedrock Nova Lite</div>
+        <span class="as live">✓ LIVE</span>
+      </div>
+      <div class="aws-box" style="border-color:#58a6ff;background:#1f6feb18">
+        <span class="ai">🪣</span><div class="an" style="color:#58a6ff">S3</div>
+        <span class="as live">✓ LIVE</span>
+      </div>
+      <div class="aws-box" style="border-color:#ff9900;background:#ff990018">
+        <span class="ai">λ</span><div class="an" style="color:#ff9900">Lambda</div>
+        <span class="as live">✓ LIVE</span>
+      </div>
+      <div class="aws-box" style="border-color:#a371f7;background:#a371f718">
+        <span class="ai">☁</span><div class="an" style="color:#a371f7">AgentCore</div>
+        <span class="as live">✓ READY</span>
+      </div>
+      <div class="aws-box" style="border-color:#30363d;background:#161b22">
+        <span class="ai">🗃</span><div class="an" style="color:#8b949e">DynamoDB</div>
+        <span class="as mock">moto mock</span>
+      </div>
+      <div class="aws-box" style="border-color:#30363d;background:#161b22">
+        <span class="ai">🔄</span><div class="an" style="color:#8b949e">AWS Glue</div>
+        <span class="as mock">moto mock</span>
+      </div>
+      <div class="aws-box" style="border-color:#3fb950;background:#3fb95018">
+        <span class="ai">📊</span><div class="an" style="color:#3fb950">CloudWatch</div>
+        <span class="as live">✓ LIVE</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title">Observability & Tracing</div>
+    <div class="flow-row" style="flex-wrap:wrap;gap:10px">
+      <div class="tbox tg"><span class="ti">📋</span><div class="tn">Agent Tracer</div><div class="td">tools/tracer.py<br>/tmp/agent_trace.jsonl</div></div>
+      <span class="arr green">▶</span>
+      <div class="tbox tg"><span class="ti">📨</span><div class="tn">Agent Bus Log</div><div class="td">tools/agent_bus.py<br>MSG_REQUEST/RESPONSE</div></div>
+      <span class="arr green">▶</span>
+      <div class="tbox tg"><span class="ti">☁</span><div class="tn">CloudWatch Logs</div><div class="td">/aws/bedrock-agentcore/<br>runtimes/...</div></div>
+      <span class="arr green">▶</span>
+      <div class="tbox tg"><span class="ti">🔍</span><div class="tn">GenAI Dashboard</div><div class="td">CloudWatch →<br>GenAI Observability</div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+function show(id, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('show'));
+  document.querySelectorAll('.toggle button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('show');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
