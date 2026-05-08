@@ -6,6 +6,7 @@ from tools.classifier import classify_ticket
 from tools.pattern_matcher import route_ticket
 from tools.models import FixSuggestion
 from tools.notifier import present_fix_and_get_approval
+from tools.tracer import start_trace, log, end_trace
 from agent_core.cicd_agent import CICDAgent
 from agent_core.data_agent import DataETLAgent
 from agent_core.infra_agent import InfraAgent
@@ -81,10 +82,15 @@ class MasterAgent:
         except ValidationError as e:
             print(f"  {RD}✗ {e}{R}")
             return {"ticket_id": None, "final_status": "REJECTED", "error": str(e)}
+        start_trace(ticket.ticket_id, description)
+        log("MasterAgent", "TICKET_CREATED", f"id={ticket.ticket_id[:8]}", "DONE",
+            outputs={"ticket_id": ticket.ticket_id})
         print(f"  {GR}✓{R} Ticket ID: {B}{ticket.ticket_id}{R}")
 
         # ── Step 2: Classify ──────────────────────────────────────────────────
         print(f"\n  {B}[2/5]{R} Classifying with AI...")
+        log("Classifier", "BEDROCK_INVOKE", "model=nova-lite", "START",
+            inputs={"description": description[:80]})
         with _Spinner("Calling Amazon Bedrock Nova..."):
             c = classify_ticket(description, self.bedrock_client)
 
@@ -93,6 +99,8 @@ class MasterAgent:
         ticket.classification_rationale = c["rationale"]
         ticket.add_status_transition("NEW", "Classification complete")
         update_ticket(ticket, self.dynamodb)
+        log("Classifier", "CLASSIFIED", f"category={ticket.category} severity={ticket.severity}", "DONE",
+            outputs={"category": ticket.category, "severity": ticket.severity, "rationale": c["rationale"]})
 
         sev_col = SEVERITY_COLOR.get(ticket.severity, R)
         icon = CATEGORY_ICON.get(ticket.category, "")
@@ -102,8 +110,12 @@ class MasterAgent:
 
         # ── Step 3: Pattern Match ─────────────────────────────────────────────
         print(f"\n  {B}[3/5]{R} Checking for recurring patterns...")
+        log("PatternMatcher", "SCAN_PATTERNS", f"category={ticket.category}", "START")
         patterns = get_patterns_by_category(ticket.category, self.dynamodb)
         routing = route_ticket(description, patterns)
+        log("PatternMatcher", "MATCH_RESULT",
+            f"status={routing['status']} confidence={routing['confidence']}%", "DONE",
+            outputs={"status": routing["status"], "confidence": routing["confidence"]})
 
         if routing["status"] == "RECURRING":
             pattern = routing["pattern"]
@@ -117,14 +129,17 @@ class MasterAgent:
             update_ticket(ticket, self.dynamodb)
 
             print(f"\n  {B}[4/5]{R} Fetching proven fix from knowledge base...")
+            log("KnowledgeBase", "FETCH_RESOLUTION", f"pattern={pattern.pattern_id[:8]}", "START")
             resolution = get_resolution_by_pattern(pattern.pattern_id, self.dynamodb)
             if resolution:
                 fix = FixSuggestion(
                     issue_summary=resolution.description_summary,
                     remediation_steps=resolution.applied_fix,
                     confidence="HIGH")
+                log("KnowledgeBase", "RESOLUTION_FOUND", f"id={resolution.resolution_id[:8]}", "DONE")
                 print(f"  {GR}✓{R} Resolution found: {B}{resolution.resolution_id}{R}")
             else:
+                log("KnowledgeBase", "NO_RESOLUTION", "falling back to sub-agent", "WARN")
                 fix = self._delegate(ticket)
         else:
             conf = routing["confidence"]
@@ -132,13 +147,19 @@ class MasterAgent:
             print(f"  {YL}⚡ NEW ISSUE{R} — no pattern match")
             print(f"    Best confidence: {bar} {conf}%")
             print(f"\n  {B}[4/5]{R} Delegating to {B}{icon} {ticket.category}{R} sub-agent...")
+            log("MasterAgent", "DELEGATE_TO_SUBAGENT", f"agent={ticket.category}", "START")
             with _Spinner(f"AI sub-agent investigating..."):
                 fix = self._delegate(ticket)
+            log("MasterAgent", "SUBAGENT_COMPLETE", f"confidence={fix.confidence}", "DONE",
+                outputs={"issue_summary": fix.issue_summary[:80]})
             print(f"  {GR}✓{R} Sub-agent analysis complete")
 
         # ── Step 5: Approval ──────────────────────────────────────────────────
         print(f"\n  {B}[5/5]{R} Operator review required...")
+        log("MasterAgent", "AWAITING_APPROVAL", "status=PENDING_APPROVAL", "INFO")
         final_status = present_fix_and_get_approval(ticket, fix, self.dynamodb)
+        log("MasterAgent", "APPROVAL_DECISION", f"status={final_status}", "DONE")
+        end_trace(final_status, ticket.ticket_id)
 
         _print_final(ticket.ticket_id, final_status)
         return {"ticket_id": ticket.ticket_id, "final_status": final_status}

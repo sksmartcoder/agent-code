@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from tools.models import FixSuggestion
 from tools.knowledge_base import get_runbook
+from tools.tracer import log
 
 FIX_JSON_SCHEMA = (
     "Respond ONLY with JSON: "
@@ -40,8 +41,15 @@ class BaseSubAgent:
     category = "Unknown"
 
     def investigate(self, ticket_id, description, category, severity, s3_client=None, bedrock_client=None):
+        agent_name = self.__class__.__name__
+        log(agent_name, "INVESTIGATE_START", f"ticket={ticket_id[:8]} category={category} severity={severity}", "START",
+            inputs={"ticket_id": ticket_id, "category": category, "severity": severity})
+
         runbook = get_runbook(category, s3_client)
         has_runbook = runbook is not None
+        log(agent_name, "RUNBOOK_FETCH", f"found={has_runbook} category={category}",
+            "DONE" if has_runbook else "WARN")
+
         runbook_ctx = f"Relevant runbook:\n\n{runbook[:3000]}" if has_runbook else "No runbook available."
         system_prompt = (
             f"You are a specialist IT engineer for {self.domain}.\n"
@@ -50,12 +58,16 @@ class BaseSubAgent:
         )
         prompt = f"Ticket: {ticket_id}\nCategory: {category}\nSeverity: {severity}\nDescription: {description}"
         try:
+            log(agent_name, "BEDROCK_INVOKE", f"model={os.environ.get('BEDROCK_MODEL_ID','nova')}", "START")
             if os.environ.get("USE_ANTHROPIC", "").lower() == "true":
                 agent = Agent(model=_build_model(), system_prompt=system_prompt)
                 suggestion = self._parse_fix(str(agent(prompt)))
             else:
                 suggestion = self._parse_fix(_call_nova(system_prompt, prompt))
+            log(agent_name, "FIX_GENERATED", f"confidence={'HIGH' if has_runbook else 'LOW'}", "DONE",
+                outputs={"issue_summary": suggestion.issue_summary[:80]})
         except Exception as e:
+            log(agent_name, "BEDROCK_ERROR", str(e)[:80], "ERROR")
             suggestion = FixSuggestion(
                 issue_summary=f"Agent error: {e}",
                 remediation_steps="Investigate manually.",

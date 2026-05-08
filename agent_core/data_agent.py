@@ -3,6 +3,7 @@ import re, boto3, json, os
 from botocore.exceptions import ClientError
 from agent_core.base_agent import BaseSubAgent, _call_nova
 from tools.models import FixSuggestion
+from tools.tracer import log
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -26,15 +27,23 @@ class DataETLAgent(BaseSubAgent):
         job_name = _extract_glue_job(description)
         if job_name:
             print(f"\n  {CY}🔍 Glue job detected:{R} {B}{job_name}{R}")
+            log("DataETLAgent", "GLUE_JOB_DETECTED", f"job={job_name}", "INFO")
+
             status = _get_job_status(job_name)
             print(f"  {CY}Last run status:{R} {_status_badge(status)}")
+            log("DataETLAgent", "GLUE_JOB_STATUS", f"job={job_name} status={status}",
+                "ERROR" if status in ("FAILED","ERROR","TIMEOUT") else "INFO")
 
             if status in ("FAILED", "ERROR", "TIMEOUT", "STOPPED", "UNKNOWN"):
                 print(f"  {YL}⚡ Attempting automatic re-run...{R}")
+                log("DataETLAgent", "GLUE_RERUN_START", f"job={job_name}", "START")
                 run_id, error = _rerun_glue_job(job_name)
                 if run_id:
                     print(f"  {GR}✓ Glue job re-triggered{R}")
                     print(f"  {GR}  Job Run ID: {B}{run_id}{R}")
+                    log("DataETLAgent", "GLUE_RERUN_SUCCESS",
+                        f"job={job_name} run_id={run_id}", "DONE",
+                        outputs={"job_name": job_name, "run_id": run_id, "action": "AUTO_RERUN"})
                     fix.remediation_steps = (
                         f"[AUTO-ACTION] Glue job '{job_name}' re-triggered automatically.\n"
                         f"Job Run ID: {run_id}\n\n"
@@ -43,14 +52,18 @@ class DataETLAgent(BaseSubAgent):
                     fix.aws_resources = list(set(fix.aws_resources + [f"glue:job:{job_name}"]))
                 else:
                     print(f"  {RD}✗ Re-run failed: {error}{R}")
+                    log("DataETLAgent", "GLUE_RERUN_FAILED",
+                        f"job={job_name} error={error}", "ERROR")
                     fix.remediation_steps = (
                         f"[MANUAL ACTION REQUIRED] Could not auto-restart Glue job '{job_name}': {error}\n\n"
                         + (fix.remediation_steps if isinstance(fix.remediation_steps, str) else "")
                     )
             elif status == "RUNNING":
                 print(f"  {GR}✓ Job is already running — no action needed{R}")
+                log("DataETLAgent", "GLUE_ALREADY_RUNNING", f"job={job_name}", "INFO")
             else:
                 print(f"  {GR}✓ Last run succeeded — investigating root cause only{R}")
+                log("DataETLAgent", "GLUE_LAST_RUN_OK", f"job={job_name} status={status}", "INFO")
 
         return fix
 
