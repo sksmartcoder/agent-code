@@ -38,7 +38,7 @@ AGENTCORE_LOG = f"/aws/bedrock-agentcore/runtimes/{AGENT_ID}-DEFAULT"
 OUT_DIR = Path(f"it-ticket-agent/screenshots_{args.speed}")
 OUT_DIR.mkdir(exist_ok=True)
 
-FEDERATION_URL = "https://signin.aws.amazon.com/federation?Issuer=workshopstudio&Destination=https://us-west-2.console.aws.amazon.com/console/home&SigninToken=oc3-JVSXr9tbS6P_bm4_KXB7AzI0b-ADqkLKb_kxm2O-H7u7ch5tstqauJnX5BgAzIzygpWUCRPQnH7O4ruPRP993bdNCLOHQLhzK1mv5Z0Nvz7dG_el3MkiGqQ4b18VUTuXkmQsfR9-pqPEIGXAYxijLW5RW8At8EMsZA9lms4t-9tBKwNx7wLHlFPpxoJlsf091B8_pnt7wOhfUD4X9u30OUK0ntbEOJd0mpicTmpqsumX74xUEZH2Z5L-mNPm_3-oEPyHT0suO9QYO7Kf6cFYyLIV6n65MKCpi42FXLaNv7TotIJZIKYrMab30YhI1A0sTbJJFiDPm15RYGg_4oW74JIp8HZ8fDxvz0ZNKwAi64XiK_6rhDjdyFo0rk9tLfC_AJOgPTGRLRDvin2SOEjjIiKC1ikjzuPMj4w3s8hQoAas6GHjnkq5D-XzUTNHTmKl7PVgmPnbxGOm5Yf948H4-uOHhSB15wnFyBfiAITW0tpH1aIOZQ_4hO_YgKPggi0meS4prW24_uEuyjANsZpdC1hRAJJEFO32bSMuTVVpLSxRTh9vCMeQYXrkQSaMSuA1cQ98sfrPS-w-S0X6YNJobF5aYIg-e1ADr-ZcabZMgJWJg75nRjrrS-OToeyGMCmmKGEGGwbu1Ni1d8VNqUQZRNiUHQ2KIKN4nA5qRap8iruMn2pOXEmbUW-b3a6nxxCy_RVroUOS3GdyydZ87ueQmtD5-f9SX6hfd3efp94Vlmn27bRYF-vF05lfsa7eqoOSBnmCHa7z3SMcMkdgMqIFEGEVlj706GKL1x0xlrOtX9ZQHtIjLu6w2A_0OYNwgM1puT1DJJIfCjfn2UyfcSKmMI-qiewZ1vz5rNs3QwaENiQQMNM4EKLrfwsktOcLAr6I8W_mpyschI00iBBH66Ezzqc4ucHlm4VDhkT6o1idOw9ITsTC8pUzOZXMd9oQuUloBnQsPdOjdlwgdcI1Kr4IWhVxL70VBoxiJKM0RqXIR7p_tMsjcP7aF9jKaOjM8f4MVmdaqxuDMAAEZ3cXkwtxU-zOGN_D95mg2VUwWBeXXnMbdKP4pxT4sy9Mn2JiMQv9jBYzyawxfcuk0t4vreLdkoilc8ROv6aFj2w0_5J32F_SBQnHUXK6fJoZSEqn5yyKkbHELmPyKW6zqSXCMUKR0XGC30gX5_ZUTvBt4LxMcHEQTlo8nradOBTjgmAit_1khhZvg-7LRNkXjRDdBKLqpbY1sjEGqyHhYOA1HjbER36hm0M1WypkjSEnAnqn-5P1hRCO_IJpWUGuaEiuM2HgBlWarcF-rlcbshu5oBXAOfBWmG4cUVe4X7J9KYfnRDtQLjycEDg3W_03iNU4uveOSAB3xr6cWIH2Y9HlvfAU4tr1Gsa0HRWHs9HA230cm5USB8IWQP2emUI1ovB1T0i8R4VRDRcZz4yb5H5eNDAhQkCnImQ6YQ&Action=login"
+FEDERATION_URL = "https://signin.aws.amazon.com/federation?Action=login&Issuer=workshopstudio&Destination=https://us-west-2.console.aws.amazon.com/console/home&SigninToken=Wt5ovzCXlKseg03QolLVLGa6xNxufSbXKnwDcutM8gF7Q7GPchXura8I_8Fj4QGwCNbDCZ4jjtQ7bANj_e-duPfqzxKyaZNpxKDT3mdehi9k7tZoX5rd8zFGPsOMYMWUbJeJvQU470177eBRJCP_zyrclmx47MF5RVA3PZVMMMvVTTnz5oL4LGFLJvLnWlTOOUKvh0B9mqh1XLbtjxsVy5QWY3QvWYPUAdj_lR9_AkAjSl5VvwGJQjBI-XHId_ymehbmFSg1Yl3haX9agoidSGSdvNnnCg6PkfFgu-WcYji5h2Ht3geR_7_be3cdN4oPGVlmmRsHXEb0RKyGYHVpbmYuewWR0o_hue8JW1t-xdAjqAg9kwJ5P-_ZvzeDimEtXNdsJzuyqEN5tOBkVMrYRJRUB5Mgajx0zEMfofOt1jTjLaFvNRqpqAx7vSRQEqCnPT8D1FKQ2zTO1AyXxug7w_ZN_B_-zGUCTfMBBP3PTWpFU1c4TRFf_az_y9ovpzCPxnqfaFth-UVj7XXmSbivZ_oZu73-5nmrqSMBM5UNRl39UdZiDk5Fdvkpt7L4WWJ5e77p2vE3L4Wt4Hhdqht1Vk0oHmwD2RMkGrxZF6L_bUnAjxaDOkKYZFmh36ySNdUabbzEVer4dN2uXbid2jEZBZX4PDP68Uq2nuuqct8LsPSd6mPXrLABMBfKBG3vVUEHJJqRjWPpUrTpXE08ZfOl74MtHTpLSq29zGTiMKfe88Sf2zj4waRukrVlHzOIFQwrCT1y_0V4ADndK--5Bz7k7u0w45cBsS4KKPdiEuOsdAnhIfIwvaJSVr_eBnrzwqhXVuFXQ-4tU10iQSbuULVIh31X2glIUTzAwRNoqvZrEfH0vojaFnnZWOMW4bYU7qWyjP6LUwoexYql9tDiP1TPX5LehY78fboTJfaa1Jk_Ja7fEqRyxNBJh4k9-q_R0txVQb9cGdiENVg_MnjrrW9l1_ZnWEcS7v5pNdzDy8Ti7tWlkT9RlsYUEFoIsTBAshxfh5Iyz3XR5vCydLF7jQ2nkbiUbazZNUp11PNTQFUr_YuIkubkEK66VXB4N_dF914X_VsOzPRfnFKXjyMSV6U5pj-3HNVWdVe0nsYBzJ8CSba385TSyXmM2e52S-0elTvyRJp9_E0ocauaX-N-rDzl0JLi14PJ3-Tlqc0tFBrq29VKioTJR1j5R2ywZCpY0Xonw_yRXj9DHFzFdOdjr09GntGN1MoPy-KNKIW-n4449Z_7IG-k3m9vxiUrlTXxdq_22JCDQgmi78JxEJgRKNFHFCsw9IqutjZCuzI9u2UQWhoR7sE3GGg060BUIeU5Ox3ri36roXiw1311SBlk7sBZTbaQXrIt_Jnglfc6MPH0tbprjpXbINk82BICkfgYD4J3o8WhS7etP-_K85UG_wIn7pKmR4xZkQjvmA9U8Nqq2I0rxgRha-NHuA"
 
 # ── Demo steps — logical story flow ─────────────────────────────────────────
 # Story: Ticket submitted → AI classifies → AgentCore routes → specialist agent fixes → verified
@@ -76,7 +76,7 @@ STEPS = [
 
     # ── ACT 2: THE CORE SERVICE — AgentCore ──────────────────────────────────
 
-    # 4. AgentCore Runtime — the main service
+    # 4. AgentCore Runtime — the main service (needs extra load time)
     (f"https://console.aws.amazon.com/bedrock/home?region={REGION}#/agentcore/runtimes",
      "04_agentcore_list",
      "Amazon Bedrock AgentCore — Runtime Registry",
@@ -243,7 +243,9 @@ for batch_start in range(0, len(STEPS), BATCH_SIZE):
     for url, fname, title, narration in batch:
         try:
             driver.get(url)
-            capture(driver, fname, title, narration)
+            # AgentCore pages are heavy React apps — need extra 12s to fully render
+            extra_wait = 15 if "agentcore" in url else 0
+            capture(driver, fname, title, narration, wait=PAGE_WAIT + extra_wait)
         except Exception as e:
             print(f"  ⚠ Skipped {fname}: {e}")
 
